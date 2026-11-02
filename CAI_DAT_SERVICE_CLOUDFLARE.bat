@@ -18,7 +18,7 @@ echo     CÀI ĐẶT CLOUDFLARE TUNNEL THÀNH WINDOWS SERVICE TỰ ĐỘNG
 echo ================================================================
 echo.
 
-set "TOKEN=eyJhIjoiMmI1MGI5ZGJiYjYxY2YyZDg4OTY1MGNhNTViMzVhMTIiLCJ0IjoiODAyNWE0YzktNjk5NC00ZDkzLWI5ZmYtZmZiYzQxY2FiMDViIiwicyI6Ik9HWmtPVE14WlRNdE9EZGtNaTAwWW1ZMExUaGlOV1l0TjJJMU1EQmhPREZrWVRnMyJ9"
+set "TOKEN=eyJhIjoiMmI1MGI5ZGJiYjYxY2YyZDg4OTY1MGNhNTViMzVhMTIiLCJ0IjoiNjdlY2M3M2EtMmQwOS00YjI3LWExNzUtMzMzNDFiY2NhMTcyIiwicyI6Ik56bGlabU13TXpndFlqSXhaUzAwTXpCa0xXRXhaV1l0T1RCaVl6Qm1aR1ZqTTJRNCJ9"
 if exist ".env" (
     for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
         if "%%A"=="CLOUDFLARE_TUNNEL_TOKEN" if not "%%B"=="" set "TOKEN=%%B"
