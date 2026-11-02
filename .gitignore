@@ -24,6 +24,10 @@ pgdata/
 automation_run.log
 checkpoint.json
 
+# Binaries & Cloudflare
+cloudflared.exe
+*.exe
+
 # Chrome user profiles & session data
 chrome_profile/
 chrome_robot_profile/
