@@ -1,0 +1,37 @@
+# Môi trường ảo Python
+.venv/
+venv/
+ENV/
+env/
+
+# Bytecode & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Môi trường & Khóa bí mật
+.env
+*.local
+
+# Cơ sở dữ liệu cục bộ & Tệp tạm
+*.db
+*.sqlite3
+pgdata/
+*.log
+automation_run.log
+checkpoint.json
+
+# Chrome user profiles & session data
+chrome_profile/
+chrome_robot_profile/
+chrome_ai_profile/
+**/chrome_ai_profile/**
+**/chrome_profile/**
+**/chrome_robot_profile/**
+
+# Hệ điều hành
+.DS_Store
+Thumbs.db

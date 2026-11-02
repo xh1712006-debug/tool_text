@@ -1,0 +1,114 @@
+import logging
+import os
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from sqlalchemy import text
+
+from src.config import settings
+from src.database import init_db, engine
+from src.cores.cores_routes import cores_router
+from src.modules.text_tuning.tuning_routes import tuning_router
+from src.modules.ai_automation.rpa_routes import rpa_router
+from src.cores.middlewares.error_handler import (
+    http_exception_handler,
+    validation_exception_handler,
+    general_exception_handler
+)
+from src.utils.responses import success_response
+
+# Cấu hình logging
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(message)s")
+logger = logging.getLogger("TuneTextApp")
+
+# Thiết lập đường dẫn tĩnh và khuôn mẫu giao diện (Monolith Fullstack)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Quản lý vòng đời khởi chạy ứng dụng (Lifespan).
+    Khởi tạo bảng cơ sở dữ liệu và kiểm tra kết nối với PostgreSQL.
+    """
+    logger.info("Đang khởi động hệ thống Backend...")
+    try:
+        init_db()
+        logger.info("-> Bảng CSDL đã được đồng bộ thành công.")
+    except Exception as e:
+        logger.warning(f"Lưu ý: Chưa thể tự động tạo bảng CSDL (Vui lòng kiểm tra kết nối PostgreSQL): {e}")
+
+    yield
+
+    logger.info("Đang tắt ứng dụng...")
+
+
+# Khởi tạo FastAPI App
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="Hệ thống Backend Modular MVC chuẩn hóa với FastAPI, SQLAlchemy và PostgreSQL.",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# 1. Cấu hình Middleware CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 2. Phục vụ tệp tĩnh (Frontend Assets: CSS, JS) tích hợp trực tiếp trong cùng hệ thống
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# 3. Đăng ký các Exception Handlers chuẩn hóa phản hồi lỗi
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
+
+# 4. Đăng ký các Router API theo chuẩn Modular MVC
+app.include_router(cores_router, prefix=settings.API_V1_PREFIX, tags=["Core Authentication & Users"])
+app.include_router(tuning_router, prefix=settings.API_V1_PREFIX, tags=["Text Tuning Module"])
+app.include_router(rpa_router, prefix=settings.API_V1_PREFIX, tags=["AI RPA Automation"])
+
+
+# 5. Giao diện Frontend Trực quan (Monolith Single-Page Application)
+@app.get("/", response_class=HTMLResponse, summary="Giao diện Web Frontend")
+def index_page(request: Request):
+    """Phục vụ trực tiếp giao diện Frontend cho người dùng trên cùng một cổng server."""
+    return templates.TemplateResponse(
+        request=request, 
+        name="index.html", 
+        context={"project_name": settings.PROJECT_NAME}
+    )
+
+
+@app.get("/health", summary="Kiểm tra sức khỏe hệ thống")
+def health_check():
+    db_status = "ok"
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as e:
+        db_status = f"disconnected: {e}"
+
+    return success_response(
+        data={
+            "app_status": "healthy",
+            "database_status": db_status,
+            "environment": settings.ENVIRONMENT
+        },
+        message="Trạng thái hệ thống hoạt động ổn định."
+    )
+

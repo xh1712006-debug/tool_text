@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tune-Text Platform - Nền Tảng Tinh Chỉnh Văn Bản (100% Miễn Phí & Bền Vững)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Navigation Header -->
+    <header class="sticky top-0 z-40 glass-panel border-b border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                    <i class="fa-solid fa-feather-pointed text-white text-lg"></i>
+                </div>
+                <div>
+                    <span class="text-lg font-bold tracking-tight text-white">Tune-Text</span>
+                    <span class="text-xs px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-mono ml-2 border border-emerald-500/20">
+                        <i class="fa-solid fa-infinity"></i> 100% Free & Durable
+                    </span>
+                </div>
+            </div>
+
+            <!-- Trạng thái Hệ thống & Xác thực -->
+            <div class="flex items-center gap-4">
+                <div id="healthBadge" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/60">
+                    <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                    <span class="text-xs text-slate-400 font-medium">Đang kiểm tra CSDL...</span>
+                </div>
+
+                <a href="/docs" target="_blank" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-book-bookmark text-indigo-400"></i> Swagger API
+                </a>
+
+                <!-- Khu vực khách chưa đăng nhập -->
+                <div id="guestAuthArea" class="flex items-center gap-2">
+                    <button onclick="openAuthModal('login')" class="text-sm font-medium px-4 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                        Đăng nhập
+                    </button>
+                    <button onclick="openAuthModal('register')" class="text-sm font-medium px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/20 transition">
+                        Đăng ký
+                    </button>
+                </div>
+
+                <!-- Khu vực người dùng đã đăng nhập -->
+                <div id="userAuthArea" class="hidden flex items-center gap-3">
+                    <div class="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-800/80 border border-slate-700">
+                        <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-xs font-bold text-white">
+                            <i class="fa-solid fa-user"></i>
+                        </div>
+                        <div class="text-left">
+                            <p id="userNameSpan" class="text-xs font-semibold text-slate-200 leading-none">User</p>
+                            <span id="userRoleSpan" class="text-[10px] text-indigo-400 font-mono">USER</span>
+                        </div>
+                    </div>
+                    <button onclick="logout()" class="text-slate-400 hover:text-rose-400 p-2 rounded-lg hover:bg-slate-800 transition" title="Đăng xuất">
+                        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-6">
+
+        <!-- Bộ Chuyển Đổi Tab Chính: Tinh Chỉnh Văn Bản vs Robot Tự Động Gõ ChatGPT -->
+        <div class="flex items-center gap-3 p-1.5 rounded-2xl glass-panel w-fit border border-slate-800">
+            <button id="tabMainTuner" onclick="switchMainTab('tuner')" class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 transition">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> <span>1. Tinh Chỉnh Văn Bản</span>
+            </button>
+            <button id="tabMainRPA" onclick="switchMainTab('rpa')" class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-slate-800/80 hover:bg-slate-800 text-slate-300 transition">
+                <i class="fa-solid fa-robot text-purple-400"></i> <span>2. Robot Tự Động Gõ Đa Nền Tảng AI</span>
+            </button>
+        </div>
+
+        <!-- PHẦN 1: BÀN LÀM VIỆC TINH CHỈNH VĂN BẢN (TUNER) -->
+        <div id="sectionTuner" class="space-y-8">
+            <!-- Cảnh báo nếu chưa đăng nhập -->
+            <div id="loginWarning" class="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-shield-halved text-indigo-400 text-lg"></i>
+                    <p class="text-sm text-indigo-200">
+                        Hệ thống lưu trữ trên PostgreSQL cục bộ an toàn và bảo mật 100%. Hãy <button onclick="openAuthModal('login')" class="underline font-semibold hover:text-white">đăng nhập</button> để lưu và quản lý lịch sử tác vụ.
+                    </p>
+                </div>
+                <button onclick="openAuthModal('login')" class="text-xs font-semibold px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition whitespace-nowrap">
+                    Đăng nhập ngay
+                </button>
+            </div>
+
+        <!-- Khung Làm việc Tinh chỉnh Văn bản (Text Tuning Playground) -->
+        <section class="glass-panel p-6 sm:p-8 rounded-3xl shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-800 gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-wand-magic-sparkles text-indigo-400"></i> Bàn Làm Việc Tinh Chỉnh Văn Bản
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">Chuẩn hóa cấu trúc câu, loại bỏ từ viết tắt/teencode, định dạng phong cách công việc, học thuật.</p>
+                </div>
+
+                <!-- Tải tệp lên & Mẫu sẵn -->
+                <div class="flex items-center flex-wrap gap-2">
+                    <!-- Nút nạp tệp -->
+                    <label class="cursor-pointer text-xs px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-file-arrow-up"></i>
+                        <span>Nạp tệp Word / PDF / TXT</span>
+                        <input type="file" id="fileUploadInput" accept=".txt,.docx,.pdf" class="hidden">
+                    </label>
+                    <span id="uploadIndicator" class="hidden text-xs text-indigo-400 animate-pulse">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Đang đọc...
+                    </span>
+
+                    <!-- Mẫu có sẵn -->
+                    <span class="text-xs text-slate-500 ml-2">Mẫu:</span>
+                    <button onclick="loadSampleTemplate('email')" class="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+                        Email
+                    </button>
+                    <button onclick="loadSampleTemplate('report')" class="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+                        Báo cáo
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tiêu đề tác vụ & Bộ chọn phong cách 5 chế độ -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-6">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-2">Tiêu đề tác vụ</label>
+                    <input type="text" id="taskTitle" placeholder="Tiêu đề tác vụ (ví dụ: Soạn thảo email đối tác)" 
+                           class="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                </div>
+
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-semibold text-slate-300 mb-2">Phong cách / Chế độ xử lý</label>
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                        <label class="cursor-pointer">
+                            <input type="radio" name="tuneMode" value="formal" checked class="peer sr-only">
+                            <div class="p-2.5 text-center rounded-xl bg-slate-900/60 border border-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-500/10 peer-checked:text-indigo-400 text-xs font-medium text-slate-400 hover:border-slate-700 transition">
+                                <i class="fa-solid fa-briefcase block mb-1"></i> Trang trọng
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="tuneMode" value="casual" class="peer sr-only">
+                            <div class="p-2.5 text-center rounded-xl bg-slate-900/60 border border-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-500/10 peer-checked:text-indigo-400 text-xs font-medium text-slate-400 hover:border-slate-700 transition">
+                                <i class="fa-solid fa-comments block mb-1"></i> Thân thiện
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="tuneMode" value="academic" class="peer sr-only">
+                            <div class="p-2.5 text-center rounded-xl bg-slate-900/60 border border-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-500/10 peer-checked:text-indigo-400 text-xs font-medium text-slate-400 hover:border-slate-700 transition">
+                                <i class="fa-solid fa-graduation-cap block mb-1"></i> Học thuật
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="tuneMode" value="clean" class="peer sr-only">
+                            <div class="p-2.5 text-center rounded-xl bg-slate-900/60 border border-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-500/10 peer-checked:text-indigo-400 text-xs font-medium text-slate-400 hover:border-slate-700 transition">
+                                <i class="fa-solid fa-broom block mb-1"></i> Sửa dấu
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="tuneMode" value="summarize" class="peer sr-only">
+                            <div class="p-2.5 text-center rounded-xl bg-slate-900/60 border border-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-500/10 peer-checked:text-indigo-400 text-xs font-medium text-slate-400 hover:border-slate-700 transition">
+                                <i class="fa-solid fa-compress block mb-1"></i> Tóm tắt
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Khung Nhập Liệu & Kết Quả (Hai cột) -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-6">
+                <!-- Cột Nhập Văn Bản Gốc -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-semibold text-slate-300">Văn bản gốc ban đầu</label>
+                        <span id="inputStats" class="text-[11px] text-slate-500 font-mono">0 ký tự | 0 từ</span>
+                    </div>
+                    <textarea id="inputText" rows="9" placeholder="Dán văn bản hoặc bấm nút 'Nạp tệp Word / PDF / TXT' ở trên..."
+                              class="w-full p-4 rounded-2xl bg-slate-900/90 border border-slate-700/80 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 leading-relaxed font-sans"></textarea>
+                </div>
+
+                <!-- Cột Kết Quả Tinh Chỉnh -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check"></i> Kết quả sau tinh chỉnh
+                        </label>
+                        <span id="outputStats" class="text-[11px] text-slate-500 font-mono">0 ký tự | 0 từ</span>
+                    </div>
+                    <div class="relative">
+                        <textarea id="outputText" rows="9" readonly placeholder="Kết quả xử lý chuẩn hóa sẽ hiển thị tại đây..."
+                                  class="w-full p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-sm text-emerald-200 focus:outline-none leading-relaxed font-sans"></textarea>
+                        
+                        <!-- Nhóm nút thao tác nhanh -->
+                        <div class="absolute top-3 right-3 flex items-center gap-1.5">
+                            <button onclick="copyOutputText()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 transition border border-slate-700" title="Sao chép">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thanh Hành động Cuối -->
+            <div class="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <!-- Các nút tải về -->
+                <div id="exportActionsGroup" class="hidden flex items-center gap-2">
+                    <span class="text-xs text-slate-400">Xuất kết quả:</span>
+                    <button id="exportDocxBtn" onclick="downloadTunedDocx()" class="text-xs px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-file-word"></i> Tải Word (.docx)
+                    </button>
+                    <button onclick="downloadTunedTxt()" class="text-xs px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-file-lines"></i> Tải Text (.txt)
+                    </button>
+                </div>
+
+                <div class="ml-auto">
+                    <button id="tuneBtn" onclick="handleTuneText()" class="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm shadow-lg shadow-indigo-500/25 flex items-center gap-2 transition transform active:scale-95">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> <span>Tinh chỉnh văn bản ngay</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Lịch sử tác vụ (Task History Table) với Tìm Kiếm Toàn Văn -->
+        <section class="glass-panel p-6 sm:p-8 rounded-3xl shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-4">
+                <div>
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i> Lịch Sử Tác Vụ Lưu Trữ PostgreSQL
+                    </h3>
+                    <p class="text-xs text-slate-400 mt-0.5">Dữ liệu được lưu vĩnh viễn trên máy chủ cục bộ (Không mất phí lưu trữ).</p>
+                </div>
+
+                <!-- Ô Tìm kiếm tức thì -->
+                <div class="flex items-center gap-3">
+                    <div class="relative w-full sm:w-64">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+                        <input type="text" id="searchInput" placeholder="Tìm kiếm tác vụ..."
+                               class="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <button onclick="loadUserTasks()" class="text-xs px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto pt-4">
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="text-xs text-slate-400 border-b border-slate-800">
+                            <th class="py-3 px-4">Mã</th>
+                            <th class="py-3 px-4">Tiêu đề tác vụ</th>
+                            <th class="py-3 px-4">Thời gian</th>
+                            <th class="py-3 px-4">Trạng thái</th>
+                            <th class="py-3 px-4 text-right">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tasksTableBody"></tbody>
+                </table>
+
+                <div id="emptyTasksState" class="text-center py-12">
+                    <div class="w-12 h-12 rounded-2xl bg-slate-800/80 mx-auto flex items-center justify-center text-slate-500 mb-3">
+                        <i class="fa-regular fa-folder-open text-xl"></i>
+                    </div>
+                    <p class="text-sm font-medium text-slate-400">Chưa tìm thấy tác vụ nào.</p>
+                    <p class="text-xs text-slate-500 mt-1">Các tác vụ bạn tinh chỉnh sẽ được lưu trữ tự động vào PostgreSQL tại đây.</p>
+                </div>
+            </div>
+        </section>
+        </div><!-- KẾT THÚC PHẦN 1: SECTION TUNER -->
+
+        <!-- PHẦN 2: ROBOT TỰ ĐỘNG GÕ VÀO CHATGPT (RPA PROMPTER) -->
+        <div id="sectionRPA" class="hidden space-y-8">
+            <section class="glass-panel p-6 sm:p-8 rounded-3xl shadow-xl border border-purple-500/20">
+                <div class="pb-6 border-b border-slate-800">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20 text-white text-lg">
+                            <i class="fa-solid fa-robot"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                                Robot Tự Động Gõ Đa Nền Tảng AI (ChatGPT, Claude, Gemini, DeepSeek...)
+                            </h2>
+                            <p class="text-xs text-slate-400 mt-0.5">
+                                Hỗ trợ mọi trang web AI. Tự động nhận diện ô nhập liệu bằng thuật toán Smart Heuristic mà không cần huấn luyện mô hình.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Banner Tiện ích Tự Động Chạy Tab Bên Cạnh -->
+                <div id="extensionNotice" class="mt-6 p-4 rounded-2xl bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border border-purple-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg shadow-purple-950/20">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-400 text-lg flex-shrink-0">
+                            <i class="fa-solid fa-puzzle-piece"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h4 class="text-xs font-bold text-white">Chế độ Tự Động Chạy Vào Tab ChatGPT / AI Bên Cạnh</h4>
+                                <span id="extensionIndicatorBadge" class="hidden text-[11px] px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
+                                    <i class="fa-solid fa-circle-check text-emerald-400"></i> <span id="extensionVersionText">Đã kết nối Tab bên cạnh (v1.0.7)</span>
+                                </span>
+                                <button type="button" id="btnReloadExtension" onclick="reloadChromeExtension()" title="Nạp lại mã mới nhất của Extension" class="hidden text-[10px] px-2 py-0.5 rounded-md bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 transition flex items-center gap-1">
+                                    <i class="fa-solid fa-arrow-rotate-right"></i> Nạp lại Extension
+                                </button>
+                            </div>
+                            <p class="text-xs text-slate-300 mt-0.5">
+                                Đã đăng nhập ChatGPT ở tab bên cạnh? Hãy nạp Tiện ích Chrome để Robot tự động nhảy sang tab đó và gõ luôn mà không mở cửa sổ mới!
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <button type="button" onclick="reloadExtensionFromWeb()" class="px-3.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-semibold flex items-center gap-1.5 transition" title="Làm mới Tiện ích Extension và tải lại mã mới nhất">
+                            <i class="fa-solid fa-arrows-rotate"></i> <span>Làm Mới Tiện Ích</span>
+                        </button>
+                        <button type="button" onclick="openExtensionGuideModal()" class="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-md shadow-purple-600/20 flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-bolt"></i> Hướng Dẫn
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 pt-6">
+                    <!-- Chọn Nền tảng AI & URL -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-2">Chọn Nền Tảng AI Mục Tiêu</label>
+                            <select id="rpaPlatformSelect" onchange="handlePlatformChange()"
+                                    class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-purple-500">
+                                <option value="chatgpt" data-url="https://chatgpt.com">OpenAI ChatGPT (chatgpt.com)</option>
+                                <option value="claude" data-url="https://claude.ai/new">Anthropic Claude (claude.ai)</option>
+                                <option value="gemini" data-url="https://gemini.google.com/app">Google Gemini (gemini.google.com)</option>
+                                <option value="deepseek" data-url="https://chat.deepseek.com">DeepSeek Chat (chat.deepseek.com)</option>
+                                <option value="poe" data-url="https://poe.com">Poe AI (poe.com)</option>
+                                <option value="perplexity" data-url="https://www.perplexity.ai">Perplexity AI (perplexity.ai)</option>
+                                <option value="custom" data-url="">🌐 Nền tảng khác / Tự động nhận diện (Smart Heuristic)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-2">Đường dẫn Website AI mục tiêu</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-link absolute left-3.5 top-3.5 text-slate-500 text-xs"></i>
+                                <input type="url" id="rpaTargetUrl" value="https://chatgpt.com" placeholder="https://chatgpt.com"
+                                       class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-purple-500">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cấu hình Nâng cao (Tùy biến Selector & Thêm AI vào CSDL) -->
+                    <div class="border border-slate-800 rounded-2xl p-4 bg-slate-900/40">
+                        <button type="button" onclick="toggleAdvancedRPASettings()" class="w-full flex items-center justify-between text-xs font-semibold text-slate-400 hover:text-purple-300 transition">
+                            <span class="flex items-center gap-2">
+                                <i class="fa-solid fa-sliders text-purple-400"></i>
+                                <span>Cấu hình Selector Nâng Cao & Thêm AI Mới vào CSDL (Không bắt buộc)</span>
+                            </span>
+                            <i id="rpaAdvancedIcon" class="fa-solid fa-chevron-down text-slate-500 transition-transform"></i>
+                        </button>
+
+                        <div id="rpaAdvancedPanel" class="hidden pt-4 space-y-4">
+                            <p class="text-xs text-slate-400">
+                                💡 <strong>Thuật toán Smart Heuristic</strong> sẽ tự động nhận dạng ô nhập và nút gửi nếu bạn để trống. Bạn chỉ cần điền nếu trang web của bạn có cấu trúc bảo mật hoặc giao diện đặc biệt.
+                            </p>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-[11px] text-slate-400 mb-1">Selector Ô nhập (Input CSS)</label>
+                                    <input type="text" id="rpaCustomInput" placeholder="Ví dụ: #prompt-textarea, textarea"
+                                           class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-slate-400 mb-1">Selector Nút gửi (Send Button CSS)</label>
+                                    <input type="text" id="rpaCustomSend" placeholder="Ví dụ: button[data-testid='send-button']"
+                                           class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-slate-400 mb-1">Selector Nút dừng (Stop Button CSS)</label>
+                                    <input type="text" id="rpaCustomStop" placeholder="Ví dụ: button[aria-label*='Stop']"
+                                           class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
+                                <span class="text-[11px] text-slate-500">Lưu lại để tái sử dụng vĩnh viễn trong PostgreSQL:</span>
+                                <button type="button" onclick="saveCurrentAIPreset()" class="text-xs px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 transition flex items-center justify-center gap-1.5">
+                                    <i class="fa-solid fa-floppy-disk"></i> Lưu nền tảng này vào CSDL
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs font-semibold text-slate-300">
+                                    Danh sách các đoạn văn bản cần gõ tự động
+                                </label>
+                                <span id="rpaPromptsCountBadge" class="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono transition">
+                                    0 đoạn
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <!-- Nút Tải tệp lên (.docx, .pdf, .txt) -->
+                                <input type="file" id="rpaPromptFileInput" accept=".docx,.pdf,.txt" onchange="handleRPAPromptFileSelect(this)" class="hidden">
+                                <button type="button" onclick="document.getElementById('rpaPromptFileInput').click()"
+                                        title="Tải tệp Word (.docx), PDF hoặc Text lên để tự động trích xuất các đoạn prompt"
+                                        class="px-2.5 py-1 rounded-lg bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/30 text-xs font-medium transition flex items-center gap-1.5">
+                                    <i class="fa-solid fa-file-arrow-up text-purple-400"></i>
+                                    <span>Tải Tệp Lên (.docx, .pdf, .txt)</span>
+                                </button>
+
+                                <!-- Nút Chuẩn hóa khoảng cách dòng -->
+                                <button type="button" onclick="normalizeRPAPromptsSpacing()"
+                                        title="Tự động căn chỉnh mỗi đoạn cách nhau đúng 1 dòng trống (như mẫu Google Docs)"
+                                        class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition flex items-center gap-1">
+                                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                                    <span>Tự Động Cách Dòng</span>
+                                </button>
+
+                                <!-- Nút Xóa hết -->
+                                <button type="button" onclick="clearRPAPrompts()"
+                                        title="Xóa toàn bộ nội dung trong ô"
+                                        class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-500/30 text-xs transition">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Khung Nhập Liệu & Hỗ Trợ Kéo Thả Tệp Trực Tiếp -->
+                        <div id="rpaDropZone" class="relative rounded-2xl border-2 border-slate-700/80 transition-all duration-200">
+                            <textarea id="rpaPromptsText" rows="9" oninput="updateRPAPromptsCount()"
+                                      placeholder="Dán hoặc kéo thả tệp Word (.docx), PDF, Text vào đây...
+
+Đoạn số 1: newsprint and archival map surfaces, black and white halftone photograph cutouts with rough scissor-cut edges...
+
+Đoạn số 2: A prominent halftone cutout of an ancient bronze sickle tool resting on a piece of torn graph paper...
+
+(Mỗi đoạn cách nhau một dòng khoảng cách / 2 lần Enter để Robot gửi tuần tự)"
+                                      class="w-full p-4 rounded-2xl bg-slate-900 text-sm text-slate-200 focus:outline-none focus:border-purple-500 leading-relaxed font-sans"></textarea>
+                        </div>
+
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1.5 px-1">
+                            <span class="flex items-center gap-1">
+                                <i class="fa-solid fa-circle-info text-purple-400"></i>
+                                <span>Kéo thả tệp hoặc tải file lên: hệ thống tự động tách mỗi đoạn cách nhau 1 dòng trống.</span>
+                            </span>
+                            <span class="text-purple-400 font-mono">Phân tách: 2 lần Enter (\n\n)</span>
+                        </div>
+                    </div>
+
+                    <!-- Bảng Cài Đặt Vòng Lặp & Thời Gian Tự Động (Chọn 1 trong 3 chế độ rõ ràng) -->
+                    <div class="p-4 rounded-2xl bg-slate-900/60 border border-purple-500/20 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <label class="text-xs font-bold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-repeat text-purple-400"></i> Cài Đặt Tự Động Lặp Lại
+                            </label>
+                            <span class="text-[11px] text-purple-300/80">Chọn 1 chế độ bạn muốn</span>
+                        </div>
+
+                        <!-- 3 Thẻ Chọn Chế Độ -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <label class="cursor-pointer">
+                                <input type="radio" name="rpaModeChoice" value="count" checked onchange="switchRPAMode('count')" class="peer sr-only">
+                                <div class="p-3 text-center rounded-xl bg-slate-950 border border-slate-800 peer-checked:border-purple-500 peer-checked:bg-purple-600/15 peer-checked:text-purple-300 text-xs font-semibold text-slate-400 hover:border-slate-700 transition">
+                                    <i class="fa-solid fa-arrow-rotate-right block mb-1 text-sm text-purple-400"></i> Lặp theo số lần
+                                </div>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="rpaModeChoice" value="duration" onchange="switchRPAMode('duration')" class="peer sr-only">
+                                <div class="p-3 text-center rounded-xl bg-slate-950 border border-slate-800 peer-checked:border-purple-500 peer-checked:bg-purple-600/15 peer-checked:text-purple-300 text-xs font-semibold text-slate-400 hover:border-slate-700 transition">
+                                    <i class="fa-solid fa-stopwatch block mb-1 text-sm text-purple-400"></i> Lặp theo thời gian (Phút)
+                                </div>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="rpaModeChoice" value="infinite" onchange="switchRPAMode('infinite')" class="peer sr-only">
+                                <div class="p-3 text-center rounded-xl bg-slate-950 border border-slate-800 peer-checked:border-purple-500 peer-checked:bg-purple-600/15 peer-checked:text-purple-300 text-xs font-semibold text-slate-400 hover:border-slate-700 transition">
+                                    <i class="fa-solid fa-infinity block mb-1 text-sm text-purple-400"></i> Chạy vô hạn
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- Cấu hình chi tiết: Chỉ hiện ô nhập của chế độ đang chọn -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-800/80">
+                            <!-- Khung 1: Lặp theo số lần -->
+                            <div id="rpaPanelCount" class="space-y-1.5">
+                                <label class="block text-[11px] text-slate-300 font-medium">
+                                    Số lần lặp lại (Vòng lặp)
+                                </label>
+                                <input type="number" id="rpaLoopCount" min="1" max="9999" value="3"
+                                       class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-purple-500/40 text-xs text-white focus:outline-none focus:border-purple-400 font-mono">
+                                <span class="text-[10px] text-slate-400 block">Ví dụ: Nhập 3 để gõ lặp lại 3 lần rồi tự dừng</span>
+                            </div>
+
+                            <!-- Khung 2: Lặp theo thời gian -->
+                            <div id="rpaPanelDuration" class="hidden space-y-1.5">
+                                <label class="block text-[11px] text-slate-300 font-medium">
+                                    Chạy liên tục trong bao lâu (Phút)
+                                </label>
+                                <input type="number" id="rpaDurationMinutes" min="1" max="1440" value="5"
+                                       class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-purple-500/40 text-xs text-white focus:outline-none focus:border-purple-400 font-mono">
+                                <span class="text-[10px] text-slate-400 block">Ví dụ: Nhập 5 để Robot tự động lặp liên tục trong 5 phút</span>
+                            </div>
+
+                            <!-- Khung 3: Lặp vô hạn -->
+                            <div id="rpaPanelInfinite" class="hidden space-y-1.5">
+                                <label class="block text-[11px] text-slate-300 font-medium">
+                                    Chế độ chạy liên tục không ngừng
+                                </label>
+                                <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-purple-300 flex items-center gap-2">
+                                    <i class="fa-solid fa-circle-info text-purple-400 text-sm"></i>
+                                    <span>Robot sẽ gõ lặp đi lặp lại liên tục cho đến khi bạn bấm nút "Dừng Robot".</span>
+                                </div>
+                            </div>
+
+                            <!-- Thời gian nghỉ mỗi lượt (chung cho tất cả chế độ) -->
+                            <div class="space-y-1.5">
+                                <label class="block text-[11px] text-slate-300 font-medium">
+                                    Thời gian nghỉ sau mỗi lượt (Giây)
+                                </label>
+                                <input type="number" id="rpaDelaySeconds" min="1" max="300" value="3"
+                                       class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-purple-500 font-mono">
+                                <span class="text-[10px] text-slate-400 block">Nghỉ sau khi AI trả lời xong rồi mới gõ lượt tiếp theo</span>
+                            </div>
+                        </div>
+
+                        <!-- Chế độ chạy ngầm hoàn toàn -->
+                        <div class="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <label class="flex items-center gap-2 text-xs text-purple-300 font-semibold cursor-pointer">
+                                <input type="checkbox" id="rpaStayInBackground" checked class="rounded bg-slate-800 border-slate-700 text-purple-600 focus:ring-0">
+                                <i class="fa-solid fa-ghost text-purple-400"></i>
+                                <span>Chạy ngầm hoàn toàn (Không giật màn hình, bạn thoải mái mở Messenger, xem YouTube...)</span>
+                            </label>
+                            <span class="text-[11px] text-slate-500">Robot tự gõ trong tab AI mà không làm phiền bạn</span>
+                        </div>
+                    </div>
+
+                    <!-- Nút Khởi chạy & Dừng & Đồng bộ Nick Google -->
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                        <div class="flex items-center flex-wrap gap-2">
+                            <button onclick="openLoginBrowser()" class="px-3.5 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition" title="Mở một cửa sổ Chrome riêng biệt của Robot để bạn đăng nhập tài khoản một lần, hoàn toàn không tắt hay ảnh hưởng đến Chrome bạn đang dùng">
+                                <i class="fa-solid fa-arrow-up-right-from-square text-emerald-400"></i> <span>Mở Chrome Robot Để Đăng Nhập (Không Tắt Máy)</span>
+                            </button>
+                            <button onclick="handleSyncGoogleProfile()" class="px-3.5 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-semibold flex items-center gap-1.5 transition" title="Đồng bộ an toàn dữ liệu từ Chrome thật sang Robot mà không cần đóng Chrome">
+                                <i class="fa-solid fa-arrows-rotate text-blue-400"></i> <span>Đồng Bộ Dữ Liệu</span>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button onclick="stopRPAPrompter()" class="px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-xs font-semibold transition">
+                                <i class="fa-solid fa-stop mr-1"></i> Dừng Robot
+                            </button>
+                            <button onclick="startRPAPrompter()" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-purple-500/25 flex items-center gap-2 transition">
+                                <i class="fa-solid fa-play"></i> <span>Khởi Chạy Robot Tự Động</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bảng Theo dõi Tiến độ Thời gian Thực (RPA Monitor) -->
+                <div id="rpaStatusCard" class="hidden mt-8 p-6 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-purple-400 animate-ping"></span>
+                            <span id="rpaStatusText" class="text-sm font-semibold text-white">Đang khởi động Robot...</span>
+                        </div>
+                        <span id="rpaProgressCount" class="text-xs font-mono px-3 py-1 rounded-lg bg-slate-800 text-purple-300">0 / 0</span>
+                    </div>
+
+                    <!-- Thanh Tiến độ -->
+                    <div class="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
+                        <div id="rpaProgressBar" class="h-full bg-gradient-to-r from-purple-500 to-indigo-500 w-0 transition-all duration-300"></div>
+                    </div>
+
+                    <!-- Hộp Nhật ký Terminal Trực tiếp -->
+                    <div>
+                        <span class="text-[11px] text-slate-400 block mb-1 font-mono">Nhật ký hoạt động (Real-time Logs):</span>
+                        <div id="rpaLogsBox" class="p-3 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300 h-36 overflow-y-auto space-y-1">
+                            <div class="text-slate-500">Đang chờ tín hiệu từ Robot...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div><!-- KẾT THÚC PHẦN 2: SECTION RPA -->
+    </main>
+
+    <!-- Modal Xác thực (Đăng nhập / Đăng ký) -->
+    <div id="authModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md p-6 rounded-3xl shadow-2xl relative border border-slate-700/60">
+            <button onclick="closeAuthModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-2">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <!-- Tabs chọn đăng nhập / đăng ký -->
+            <div class="flex border-b border-slate-800 mb-6">
+                <button id="tabLogin" onclick="switchAuthTab('login')" class="flex-1 py-2 text-center text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400">
+                    Đăng nhập
+                </button>
+                <button id="tabRegister" onclick="switchAuthTab('register')" class="flex-1 py-2 text-center text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200">
+                    Đăng ký tài khoản
+                </button>
+            </div>
+
+            <!-- Báo lỗi nếu có -->
+            <div id="authErrorBox" class="hidden mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400"></div>
+
+            <!-- Form Đăng nhập -->
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Tài khoản hoặc Email</label>
+                    <input type="text" id="loginEmail" required value="admin12345" placeholder="admin12345 hoặc email..."
+                           class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Mật khẩu</label>
+                    <input type="password" id="loginPassword" required value="admin12345" placeholder="admin12345"
+                           class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <button type="submit" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-lg shadow-indigo-500/25 transition">
+                    Đăng nhập ngay
+                </button>
+                <button type="button" onclick="loginInfiniteAccount()" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 font-semibold text-xs transition border border-amber-500/30 flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/10">
+                    <i class="fa-solid fa-crown text-amber-400"></i> Đăng nhập Nick VIP: admin12345 (Token Vô Hạn 100 Năm)
+                </button>
+                <button type="button" onclick="loginDemoAccount()" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 font-semibold text-xs transition border border-slate-700/60 flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-bolt text-slate-400"></i> Đăng nhập tài khoản dùng thử
+                </button>
+            </form>
+
+            <!-- Form Đăng ký -->
+            <form id="registerForm" onsubmit="handleRegister(event)" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Họ và tên</label>
+                    <input type="text" id="regFullName" required placeholder="Nguyễn Văn A"
+                           class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Email</label>
+                    <input type="email" id="regEmail" required placeholder="name@example.com"
+                           class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Mật khẩu (Tối thiểu 6 ký tự)</label>
+                    <input type="password" id="regPassword" required minlength="6" placeholder="••••••••"
+                           class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <button type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold text-sm shadow-lg shadow-indigo-500/25 transition">
+                    Tạo tài khoản mới
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Hướng Dẫn Kích Hoạt Extension (Chạy Tab Bên Cạnh) -->
+    <div id="extensionGuideModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-lg p-6 rounded-3xl shadow-2xl relative border border-purple-500/40">
+            <button onclick="closeExtensionGuideModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-2">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 text-lg">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-white">Kích Hoạt Chạy Trực Tiếp Vào Tab Bên Cạnh</h3>
+                    <p class="text-xs text-slate-400">Chỉ cần 3 bước đơn giản (mất đúng 10 giây, không tắt Chrome)</p>
+                </div>
+            </div>
+
+            <div class="space-y-3 text-xs text-slate-300">
+                <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-3">
+                    <span class="w-6 h-6 rounded-full bg-purple-600/30 text-purple-400 font-bold flex items-center justify-center flex-shrink-0 text-xs">1</span>
+                    <div class="flex-1">
+                        <p class="font-semibold text-white">Mở trang Quản lý Tiện ích của Chrome</p>
+                        <p class="text-slate-400 mt-0.5">Bấm dấu <strong>+</strong> mở một tab mới trên Chrome và gõ đường dẫn sau rồi nhấn Enter:</p>
+                        <div class="mt-1 flex items-center gap-2">
+                            <code class="px-2 py-1 bg-slate-950 text-purple-300 rounded font-mono text-xs select-all border border-purple-500/30">chrome://extensions/</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-3">
+                    <span class="w-6 h-6 rounded-full bg-purple-600/30 text-purple-400 font-bold flex items-center justify-center flex-shrink-0 text-xs">2</span>
+                    <div class="flex-1">
+                        <p class="font-semibold text-white">Bật "Chế độ cho nhà phát triển" (Developer mode)</p>
+                        <p class="text-slate-400 mt-0.5">Nhìn lên <strong>Góc trên cùng bên phải</strong> màn hình Chrome, bạn sẽ thấy dòng chữ kèm công tắc gạt:</p>
+                        <!-- Minh họa trực quan Chrome Header -->
+                        <div class="mt-2 p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+                            <span class="text-slate-400 font-medium">Chế độ dành cho nhà phát triển (Developer mode)</span>
+                            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-600/30 border border-blue-500 text-blue-300 font-bold text-[11px]">
+                                <span>BẬT</span>
+                                <span class="w-3.5 h-3.5 rounded-full bg-blue-400 inline-block shadow"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-3">
+                    <span class="w-6 h-6 rounded-full bg-purple-600/30 text-purple-400 font-bold flex items-center justify-center flex-shrink-0 text-xs">3</span>
+                    <div class="flex-1">
+                        <p class="font-semibold text-white">Bấm "Tải tiện ích đã giải nén" (Load unpacked)</p>
+                        <p class="text-slate-400 mt-0.5">Ngay khi gạt BẬT ở bước 2, nhìn sang <strong>Góc trên cùng bên trái</strong> sẽ xuất hiện nút:</p>
+                        <div class="mt-1 mb-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-slate-800 border border-slate-600 text-slate-200 font-medium text-[11px]">
+                            <i class="fa-solid fa-folder-open text-amber-400"></i> Tải tiện ích đã giải nén (Load unpacked)
+                        </div>
+                        <p class="text-slate-400">Chọn thư mục sau (Bấm nút bên dưới để sao chép nhanh):</p>
+                        <div class="mt-1 flex items-center gap-2">
+                            <input type="text" readonly value="d:\project\project-local\tune-text\chrome_extension" id="extPathInput"
+                                   class="flex-1 p-2 rounded-lg bg-slate-950 font-mono text-[11px] text-emerald-400 border border-emerald-500/30 select-all">
+                            <button type="button" onclick="copyExtensionPath()" class="px-3 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1 transition">
+                                <i class="fa-solid fa-copy"></i> Chép
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 flex items-center justify-end gap-3">
+                <button type="button" onclick="closeExtensionGuideModal()" class="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-lg shadow-purple-500/25 transition">
+                    Tôi Đã Hiểu & Đang Nạp Tiện Ích
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Cảnh Báo Bản Cũ & Hướng Dẫn Tải Lại Tiện Ích -->
+    <div id="extensionReloadModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-lg p-6 rounded-3xl shadow-2xl relative border border-amber-500/50 bg-slate-950/95">
+            <button onclick="document.getElementById('extensionReloadModal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-white p-2">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 text-xl shadow-lg shadow-amber-500/20">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-white">Yêu Cầu Tải Lại Tiện Ích Để Nhận Bản Vá Chống Gửi Đúp</h3>
+                    <p class="text-xs text-amber-400">Trình duyệt Chrome vẫn đang giữ bản cũ v1.0.6 trong bộ nhớ (Bản mới là v1.0.7)</p>
+                </div>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 mb-4 leading-relaxed">
+                <i class="fa-solid fa-triangle-exclamation mr-1 text-amber-400"></i>
+                <strong>Vì sao cần tải lại?</strong> Bản mới v1.0.7 loại bỏ hoàn toàn các sự kiện click kép/phím Enter trùng lặp, đảm bảo mỗi đoạn prompt chỉ được gửi duy nhất 1 lần vào khung chat AI.
+            </div>
+
+            <div class="space-y-3 text-xs text-slate-300">
+                <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-3">
+                    <span class="w-6 h-6 rounded-full bg-amber-600/30 text-amber-400 font-bold flex items-center justify-center flex-shrink-0 text-xs">1</span>
+                    <div class="flex-1">
+                        <p class="font-semibold text-white">Vào trang Quản lý tiện ích Chrome</p>
+                        <p class="text-slate-400 mt-0.5">Mở một tab mới trên Chrome và dán: <code class="px-1.5 py-0.5 bg-slate-950 text-amber-300 rounded font-mono text-[11px] select-all border border-amber-500/30">chrome://extensions/</code></p>
+                    </div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-3">
+                    <span class="w-6 h-6 rounded-full bg-amber-600/30 text-amber-400 font-bold flex items-center justify-center flex-shrink-0 text-xs">2</span>
+                    <div class="flex-1">
+                        <p class="font-semibold text-white">Bấm nút xoay tròn 🔄 (Tải lại) trên ô Tune-Text</p>
+                        <p class="text-slate-400 mt-0.5">Tìm ô có tên <strong>"Tune-Text AI Prompter"</strong>, nhìn xuống góc dưới bên phải ô đó có biểu tượng mũi tên xoay tròn <strong>🔄</strong> ➔ <strong>BẤM VÀO ĐÓ 1 CÁI</strong> (hoặc bấm nút "Cập nhật" ở thanh trên cùng).</p>
+                    </div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-3">
+                    <span class="w-6 h-6 rounded-full bg-amber-600/30 text-amber-400 font-bold flex items-center justify-center flex-shrink-0 text-xs">3</span>
+                    <div class="flex-1">
+                        <p class="font-semibold text-white">Tải lại tab ChatGPT & Tab này (F5)</p>
+                        <p class="text-slate-400 mt-0.5">Quay lại tab <strong>ChatGPT</strong> nhấn <strong>F5</strong>, sau đó quay lại tab này nhấn <strong>F5</strong> rồi bấm chạy là Robot sẽ chạy đủ 3 lượt!</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-5 flex items-center justify-end gap-3">
+                <button type="button" onclick="document.getElementById('extensionReloadModal').classList.add('hidden')" class="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-lg shadow-amber-500/25 transition">
+                    Tôi Đã Bấm Tải Lại Xong
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="glass-panel border-t border-slate-800 py-6 text-center text-xs text-slate-500">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>© 2026 Tune-Text Platform. 100% Mã Nguồn Mở, Chạy Cục Bộ, Không Mất Phí Bản Quyền.</p>
+            <div class="flex items-center gap-4">
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-server text-indigo-400"></i> Cloudflare Tunnel (Miễn phí)</span>
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-database text-emerald-400"></i> PostgreSQL 16 (Bền vững)</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- App Logic Script (Cache-buster để trình duyệt luôn tải bản mới nhất) -->
+    <script src="/static/js/app.js?v=20261103_0115"></script>
+</body>
+</html>
