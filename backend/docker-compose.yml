@@ -37,16 +37,15 @@ services:
     ports:
       - "${DOCKER_APP_PORT:-8000}:8000"
 
-  # 3. Dịch vụ Cloudflare Tunnel (Tùy chọn: Chạy khi có token)
+  # 3. Dịch vụ Cloudflare Tunnel (Chạy ngầm kết nối ra Internet 24/7)
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: tunetext_cloudflared
     restart: always
     command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    network_mode: "service:api"
     depends_on:
       - api
-    profiles:
-      - tunnel
 
 volumes:
   pgdata:
