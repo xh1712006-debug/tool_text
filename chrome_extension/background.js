@@ -1,5 +1,5 @@
-// Background Service Worker for Tune-Text AI Prompter (v1.0.9)
-console.log("[Tune-Text Extension] Service Worker khởi động (v1.0.9).");
+// Background Service Worker for Tune-Text AI Prompter (v1.1.0)
+console.log("[Tune-Text Extension] Service Worker khởi động (v1.1.0).");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Lệnh làm mới Tiện ích trực tiếp từ Web UI
@@ -108,15 +108,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const sendRunMessage = () => {
           chrome.tabs.sendMessage(aiTab.id, runPayload, (res) => {
             if (chrome.runtime.lastError) {
-              console.warn("[Tune-Text BG] Lỗi gửi RUN_PROMPTS:", chrome.runtime.lastError.message);
+              const errMsg = chrome.runtime.lastError.message;
+              console.warn("[Tune-Text BG] Lỗi gửi RUN_PROMPTS:", errMsg);
+              if (callerTabId) {
+                chrome.tabs.sendMessage(callerTabId, {
+                  action: "RPA_PROGRESS",
+                  data: {
+                    status_message: `⚠️ Lỗi kết nối Tab AI: ${errMsg}`,
+                    log: `[Lỗi Robot] Không thể kết nối với tab AI (${aiTab.title || targetHostname}). Lỗi: ${errMsg}. Vui lòng bấm F5 tải lại tab AI rồi bấm Khởi Chạy lại!`,
+                    is_completed: false
+                  }
+                }, () => { if (chrome.runtime.lastError) { } });
+              }
             } else {
               console.log("[Tune-Text BG] RUN_PROMPTS phản hồi thành công:", res);
             }
           });
         };
 
-        // Kiểm tra xem tab AI đã có content script v1.0.9 chưa
-        const EXT_VER = "1.0.9";
+        // Kiểm tra xem tab AI đã có content script v1.1.0 chưa
+        const EXT_VER = "1.1.0";
         chrome.tabs.sendMessage(aiTab.id, { action: "PING" }, (pingRes) => {
           if (chrome.runtime.lastError || !pingRes || pingRes.version !== EXT_VER) {
             console.log(`[Tune-Text BG] Tab AI đang chạy bản cũ hoặc chưa sẵn sàng. Đang nạp mã v${EXT_VER}...`);
@@ -127,7 +138,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               chrome.scripting.insertCSS({
                 target: { tabId: aiTab.id },
                 files: ["styles.css"]
-              }).catch(() => {});
+              }).catch(() => { });
             }).catch(() => {
               console.log("[Tune-Text BG] Tải lại tab để nạp lại script mới...");
               chrome.tabs.reload(aiTab.id);
@@ -135,7 +146,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               setTimeout(sendRunMessage, 1200);
             });
           } else {
-            // Tab AI đã chạy bản mới nhất v1.0.9 -> Gửi lệnh chạy ngay!
+            // Tab AI đã chạy bản mới nhất v1.1.0 -> Gửi lệnh chạy ngay!
             sendRunMessage();
           }
         });
@@ -154,16 +165,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     };
 
+    // Hàm nhận diện tab AI đang mở (dự phòng trường hợp người dùng mở sẵn Gemini/Claude mà dropdown để ChatGPT)
+    function isAnyOpenAITab(t) {
+      if (!t || !t.url) return false;
+      const u = t.url.toLowerCase();
+      if (u.startsWith("chrome://") || u.startsWith("edge://") || u.startsWith("about:")) return false;
+      if (u.includes("localhost:8000") || u.includes("127.0.0.1:8000") || u.includes("nextdev.name.vn") || u.includes("trycloudflare.com")) return false;
+      const knownDomains = ["gemini.google.com", "chatgpt.com", "claude.ai", "deepseek.com", "poe.com", "perplexity.ai", "muse.ai"];
+      return knownDomains.some(d => u.includes(d));
+    }
+
     // 1. Quét trong cửa sổ hiện tại trước
     chrome.tabs.query({ windowId: currentWindowId }, (currentTabs) => {
       let aiTab = (currentTabs || []).find(isAIMatchTab);
+
+      // Nếu không khớp trực tiếp, kiểm tra xem có tab AI nào khác đang mở sẵn trong cửa sổ này không
+      if (!aiTab) {
+        aiTab = (currentTabs || []).find(isAnyOpenAITab);
+      }
 
       if (aiTab) {
         executeOnTab(aiTab);
       } else {
         // 2. Nếu không tìm thấy, quét toàn bộ các cửa sổ Chrome khác
         chrome.tabs.query({}, (allTabs) => {
-          aiTab = (allTabs || []).find(isAIMatchTab);
+          aiTab = (allTabs || []).find(isAIMatchTab) || (allTabs || []).find(isAnyOpenAITab);
 
           if (aiTab) {
             executeOnTab(aiTab);

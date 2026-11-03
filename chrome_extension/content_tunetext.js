@@ -4,7 +4,7 @@ console.log("[Tune-Text Extension] Content Script đã nhúng vào Tune-Text th�
 // Đánh dấu để trang Web biết Extension đã sẵn sàng
 function notifyWebPage() {
   document.documentElement.dataset.tuneTextExtension = "active";
-  window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.0.9" } }));
+  window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.1.0" } }));
 }
 
 notifyWebPage();

@@ -388,10 +388,6 @@
     }
     return true;
   }
-    }
-
-    return true;
-  }
 
   // 10. Chờ AI phản hồi xong hoàn toàn (Dựa trên cả nút Stop và độ ổn định văn bản)
   async function waitForAIFinish(maxWaitMs = 180000, customStopSelector = "") {
@@ -703,9 +699,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.0.9
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.1.0
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.0.9" });
+      sendResponse({ pong: true, version: "1.1.0" });
       return;
     }
 
@@ -714,7 +710,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.0.9) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.1.0) =====");
       console.log("  request.targetUrl       =", request.targetUrl);
       console.log("  request.platformCode    =", request.platformCode);
       console.log("  request.loopCount       =", request.loopCount, typeof request.loopCount);
