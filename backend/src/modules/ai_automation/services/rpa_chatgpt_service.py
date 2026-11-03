@@ -7,11 +7,23 @@ import threading
 from typing import List, Optional, Callable, Dict, Any
 from pathlib import Path
 
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+try:
+    import undetected_chromedriver as uc
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+except ImportError:
+    uc = None
+    class _DummyBy:
+        ID = "id"
+        CSS_SELECTOR = "css selector"
+        TAG_NAME = "tag name"
+        XPATH = "xpath"
+    By = _DummyBy()
+    Keys = None
+    WebDriverWait = None
+    EC = None
 
 from src.modules.ai_automation.models.ai_preset import DEFAULT_AI_PRESETS
 
