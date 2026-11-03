@@ -950,6 +950,16 @@ window.addEventListener("TUNE_TEXT_RESPONSE", (e) => {
     const res = e.detail;
     if (res && res.message) {
         showToast(res.message, res.success ? "success" : "error");
+        if (!res.success) {
+            const logsBox = document.getElementById("rpaLogsBox");
+            if (logsBox) {
+                const errLog = document.createElement("div");
+                errLog.className = "text-red-400 font-semibold";
+                errLog.textContent = `[${new Date().toLocaleTimeString()}] ❌ ${res.message}`;
+                logsBox.appendChild(errLog);
+                logsBox.scrollTop = logsBox.scrollHeight;
+            }
+        }
     }
 });
 

@@ -36,7 +36,7 @@ services:
     ports:
       - "8000:8000"
 
-  # 3. Dịch vụ Cloudflare Tunnel (Expose Web ra Internet an toàn mà không cần mở cổng Router)
+  # 3. Dịch vụ Cloudflare Tunnel (Tùy chọn: Chạy khi có token)
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: tunetext_cloudflared
@@ -44,6 +44,8 @@ services:
     command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - api
+    profiles:
+      - tunnel
 
 volumes:
   pgdata:

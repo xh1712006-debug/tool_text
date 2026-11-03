@@ -21,5 +21,5 @@ COPY . .
 EXPOSE 8000
 
 # Lệnh khởi chạy FastAPI với uvicorn
-CMD ["uvicorn", "src.main:app", "--host", "localhost", "--port", "8000"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
