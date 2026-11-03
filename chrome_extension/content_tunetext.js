@@ -14,7 +14,9 @@ setTimeout(notifyWebPage, 1500);
 
 // Lắng nghe lệnh làm mới tiện ích từ trang Web
 window.addEventListener("TUNE_TEXT_RELOAD_EXTENSION", () => {
-  chrome.runtime.sendMessage({ action: "RELOAD_EXTENSION" });
+  chrome.runtime.sendMessage({ action: "RELOAD_EXTENSION" }, () => {
+    if (chrome.runtime.lastError) { }
+  });
 });
 
 // Lắng nghe sự kiện yêu cầu chạy từ app.js

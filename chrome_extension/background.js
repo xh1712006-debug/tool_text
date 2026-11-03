@@ -115,10 +115,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           });
         };
 
-        // Kiểm tra xem tab AI đã có content script v1.0.7 chưa
+        // Kiểm tra xem tab AI đã có content script v1.0.9 chưa
+        const EXT_VER = "1.0.9";
         chrome.tabs.sendMessage(aiTab.id, { action: "PING" }, (pingRes) => {
-          if (chrome.runtime.lastError || !pingRes || pingRes.version !== "1.0.7") {
-            console.log("[Tune-Text BG] Tab AI đang chạy bản cũ hoặc chưa sẵn sàng. Đang nạp mã v1.0.7...");
+          if (chrome.runtime.lastError || !pingRes || pingRes.version !== EXT_VER) {
+            console.log(`[Tune-Text BG] Tab AI đang chạy bản cũ hoặc chưa sẵn sàng. Đang nạp mã v${EXT_VER}...`);
             chrome.scripting.executeScript({
               target: { tabId: aiTab.id },
               files: ["content_ai.js"]
@@ -134,7 +135,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               setTimeout(sendRunMessage, 1200);
             });
           } else {
-            // Tab AI đã chạy bản mới nhất v1.0.7 -> Gửi lệnh chạy ngay!
+            // Tab AI đã chạy bản mới nhất v1.0.9 -> Gửi lệnh chạy ngay!
             sendRunMessage();
           }
         });
@@ -194,13 +195,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Trả lời bất đồng bộ
   }
 
-  // 2. Chuyển tiếp tiến độ từ Tab AI về lại Tab Tune-Text
+  // 2. Chuyển tiếp tiến độ từ Tab AI về lại Tab Tune-Text an toàn (Không sinh lỗi nếu tab đóng hoặc F5)
   if (request.action === "REPORT_PROGRESS" && request.callerTabId) {
     chrome.tabs.sendMessage(request.callerTabId, {
       action: "RPA_PROGRESS",
       data: request.data
-    }).catch(() => {
-      // Tab Tune-Text có thể đã đóng hoặc chuyển hướng
+    }, () => {
+      if (chrome.runtime.lastError) {
+        // Tab Tune-Text đã đóng hoặc F5 tải lại, bỏ qua an toàn mà không sinh lỗi đỏ
+      }
     });
   }
 });

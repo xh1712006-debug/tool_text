@@ -448,6 +448,22 @@
     await new Promise(r => setTimeout(r, 2000));
   }
 
+  // Báo cáo tiến độ an toàn về tab Tune-Text (chống sinh lỗi unhandled promise khi tab F5)
+  function safeReportProgress(callerTabId, data) {
+    if (!callerTabId) return;
+    try {
+      chrome.runtime.sendMessage({
+        action: "REPORT_PROGRESS",
+        callerTabId: callerTabId,
+        data: data
+      }, () => {
+        if (chrome.runtime.lastError) {
+          // Tab Tune-Text đã đóng hoặc F5, bỏ qua an toàn mà không sinh lỗi đỏ
+        }
+      });
+    } catch (e) { }
+  }
+
   // 7. Vòng lặp chạy prompts (Hỗ trợ lặp nhiều lần Lượt 1 -> Lượt 2 -> Lượt N hoàn toàn ngầm)
   async function runPromptSequence(prompts, callerTabId, options = {}) {
     if (isAutomationRunning) {
@@ -537,24 +553,20 @@
 
         updateHUD(`${loopPrefix} Đang chuẩn bị gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, currentBatch.combinedPrompt, false, currentLoop, loopCount, currentBatch.rangeLabel);
 
-        // Báo tiến độ về Tab Tune-Text
-        chrome.runtime.sendMessage({
-          action: "REPORT_PROGRESS",
-          callerTabId: callerTabId,
-          data: {
-            current_index: currentBatchIndex,
-            total_prompts: totalBatchesPerLoop,
-            actual_prompt_count: totalPromptsPerLoop,
-            batch_size: batchSize,
-            batch_label: currentBatch.rangeLabel,
-            current_loop: currentLoop,
-            loop_count: loopCount,
-            duration_minutes: durationMinutes,
-            remaining_time_str: getRemainingStr(),
-            status_message: `${loopPrefix} Đang gửi ${batchProgressStr} (Chạy ngầm)...`,
-            log: `[Tab AI] ${loopPrefix} Đang gửi ${batchProgressStr}: "${currentBatch.combinedPrompt.substring(0, 40)}..."`,
-            is_completed: false
-          }
+        // Báo tiến độ về Tab Tune-Text an toàn
+        safeReportProgress(callerTabId, {
+          current_index: currentBatchIndex,
+          total_prompts: totalBatchesPerLoop,
+          actual_prompt_count: totalPromptsPerLoop,
+          batch_size: batchSize,
+          batch_label: currentBatch.rangeLabel,
+          current_loop: currentLoop,
+          loop_count: loopCount,
+          duration_minutes: durationMinutes,
+          remaining_time_str: getRemainingStr(),
+          status_message: `${loopPrefix} Đang gửi ${batchProgressStr} (Chạy ngầm)...`,
+          log: `[Tab AI] ${loopPrefix} Đang gửi ${batchProgressStr}: "${currentBatch.combinedPrompt.substring(0, 40)}..."`,
+          is_completed: false
         });
 
         const customInputSel = options.inputSelector || options.customInput || "";
@@ -585,25 +597,21 @@
         updateHUD(`${loopPrefix} ${batchProgressStr}: Đang chờ AI trả lời xong...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
         await waitForAIFinish(180000, customStopSel);
 
-        // Báo hoàn thành lô này
+        // Báo hoàn thành lô này an toàn
         const isAllLoopsCompleted = (!isTimeMode && !isInfinite && currentLoop === loopCount && currentBatchIndex === totalBatchesPerLoop);
-        chrome.runtime.sendMessage({
-          action: "REPORT_PROGRESS",
-          callerTabId: callerTabId,
-          data: {
-            current_index: currentBatchIndex,
-            total_prompts: totalBatchesPerLoop,
-            actual_prompt_count: totalPromptsPerLoop,
-            batch_size: batchSize,
-            batch_label: currentBatch.rangeLabel,
-            current_loop: currentLoop,
-            loop_count: loopCount,
-            duration_minutes: durationMinutes,
-            remaining_time_str: getRemainingStr(),
-            status_message: `${loopPrefix} ${batchProgressStr} đã phản hồi xong.`,
-            log: `[Tab AI] ${loopPrefix} ${batchProgressStr} đã được AI phản hồi hoàn tất.`,
-            is_completed: isAllLoopsCompleted
-          }
+        safeReportProgress(callerTabId, {
+          current_index: currentBatchIndex,
+          total_prompts: totalBatchesPerLoop,
+          actual_prompt_count: totalPromptsPerLoop,
+          batch_size: batchSize,
+          batch_label: currentBatch.rangeLabel,
+          current_loop: currentLoop,
+          loop_count: loopCount,
+          duration_minutes: durationMinutes,
+          remaining_time_str: getRemainingStr(),
+          status_message: `${loopPrefix} ${batchProgressStr} đã phản hồi xong.`,
+          log: `[Tab AI] ${loopPrefix} ${batchProgressStr} đã được AI phản hồi hoàn tất.`,
+          is_completed: isAllLoopsCompleted
         });
 
         // Nghỉ giữa các lô trong cùng một lượt
@@ -627,23 +635,19 @@
         const totalDelay = Math.max(1, Math.ceil(delayBetweenLoops));
         const remNotice = isTimeMode ? ` ${getRemainingStr()}` : "";
 
-        // Thông báo sang Tab Tune-Text để hiển thị vào nhật ký
-        chrome.runtime.sendMessage({
-          action: "REPORT_PROGRESS",
-          callerTabId: callerTabId,
-          data: {
-            current_index: totalBatchesPerLoop,
-            total_prompts: totalBatchesPerLoop,
-            actual_prompt_count: totalPromptsPerLoop,
-            batch_size: batchSize,
-            current_loop: currentLoop,
-            loop_count: loopCount,
-            duration_minutes: durationMinutes,
-            remaining_time_str: getRemainingStr(),
-            status_message: `✅ Xong lượt ${currentLoop}! Đang nghỉ ${totalDelay}s trước khi gõ lượt ${nextLoop}...${remNotice}`,
-            log: `[Tab AI] ✅ Xong lượt ${currentLoop}! Nghỉ ${totalDelay}s rồi tự động gõ tiếp lượt ${nextLoop}...${remNotice}`,
-            is_completed: false
-          }
+        // Thông báo sang Tab Tune-Text để hiển thị vào nhật ký an toàn
+        safeReportProgress(callerTabId, {
+          current_index: totalBatchesPerLoop,
+          total_prompts: totalBatchesPerLoop,
+          actual_prompt_count: totalPromptsPerLoop,
+          batch_size: batchSize,
+          current_loop: currentLoop,
+          loop_count: loopCount,
+          duration_minutes: durationMinutes,
+          remaining_time_str: getRemainingStr(),
+          status_message: `✅ Xong lượt ${currentLoop}! Đang nghỉ ${totalDelay}s trước khi gõ lượt ${nextLoop}...${remNotice}`,
+          log: `[Tab AI] ✅ Xong lượt ${currentLoop}! Nghỉ ${totalDelay}s rồi tự động gõ tiếp lượt ${nextLoop}...${remNotice}`,
+          is_completed: false
         });
 
         for (let s = totalDelay; s > 0; s--) {
@@ -671,22 +675,18 @@
     }
 
     updateHUD(finalMsg, totalBatchesPerLoop, totalBatchesPerLoop);
-    chrome.runtime.sendMessage({
-      action: "REPORT_PROGRESS",
-      callerTabId: callerTabId,
-      data: {
-        current_index: totalBatchesPerLoop,
-        total_prompts: totalBatchesPerLoop,
-        actual_prompt_count: totalPromptsPerLoop,
-        batch_size: batchSize,
-        current_loop: currentLoop,
-        loop_count: loopCount,
-        duration_minutes: durationMinutes,
-        remaining_time_str: "",
-        status_message: finalMsg,
-        log: `[Tab AI] ${finalMsg}`,
-        is_completed: true
-      }
+    safeReportProgress(callerTabId, {
+      current_index: totalBatchesPerLoop,
+      total_prompts: totalBatchesPerLoop,
+      actual_prompt_count: totalPromptsPerLoop,
+      batch_size: batchSize,
+      current_loop: currentLoop,
+      loop_count: loopCount,
+      duration_minutes: durationMinutes,
+      remaining_time_str: "",
+      status_message: finalMsg,
+      log: `[Tab AI] ${finalMsg}`,
+      is_completed: true
     });
 
     setTimeout(() => {
