@@ -209,11 +209,32 @@
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
       } else {
-        el.innerHTML = "<p><br></p>";
+        try {
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          document.execCommand("delete", false, null);
+        } catch (err) { }
+        if (el.textContent.trim() !== "") {
+          el.innerHTML = "<p><br></p>";
+        }
         el.dispatchEvent(new InputEvent("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
       }
     } catch (e) { }
+  }
+
+  // Hàm bảo vệ ký tự đặc biệt cho định dạng HTML
+  function escapeHTML(str) {
+    if (!str) return "";
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   // 7. Chờ AI rảnh hoàn toàn và ô nhập sẵn sàng nhận văn bản
@@ -235,8 +256,9 @@
     return findAIInputBox(customInputSelector);
   }
 
-  // 8. Gõ văn bản vào ô nhập (Hỗ trợ 100% cả tab ngầm và đa nền tảng)
+  // 8. Gõ văn bản vào ô nhập (Hỗ trợ 100% cả tab ngầm, đa nền tảng và gộp nhiều đoạn prompt)
   async function typeTextIntoInput(el, text) {
+    if (!el || !text) return;
     try { el.focus(); } catch (e) { }
 
     const isTextarea = el.tagName.toLowerCase() === "textarea" || el.tagName.toLowerCase() === "input";
@@ -248,58 +270,65 @@
       return;
     }
 
-    // Với ChatGPT contenteditable (ProseMirror):
-    let inserted = false;
-    if (document.hasFocus()) {
-      try {
-        const sel = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        document.execCommand("delete", false, null);
-        inserted = document.execCommand("insertText", false, text);
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-      } catch (e) { }
-    }
+    // Với ContentEditable (ChatGPT, Claude, Gemini, DeepSeek, ProseMirror...):
+    // Phân tách các đoạn prompt để giữ nguyên vẹn cấu trúc đa đoạn
+    const paragraphs = text.split(/\n\s*\n+/).map(p => p.trim()).filter(p => p.length > 0);
+    const htmlParagraphs = paragraphs.map(p => `<p>${escapeHTML(p).replace(/\n/g, "<br>")}</p>`).join("");
 
-    // Cách 2: Nếu tab ở chế độ ngầm: Thử phát ClipboardEvent hoặc chèn node chuẩn ProseMirror
-    if (!inserted || el.textContent.trim() === "") {
+    let successInserted = false;
+
+    // BƯỚC 1: Sử dụng ClipboardEvent("paste") chuẩn HTML + PlainText (Cách tốt nhất cho ProseMirror giữ trọn các đoạn)
+    try {
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      dt.setData("text/html", htmlParagraphs);
+
+      const pasteEvt = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dt
+      });
+      el.dispatchEvent(pasteEvt);
+
+      // Kiểm tra xem ô chat đã nhận đủ nội dung hay chưa
+      const insertedLen = (el.textContent || el.innerText || "").trim().length;
+      if (insertedLen >= Math.min(text.trim().length * 0.7, 40)) {
+        successInserted = true;
+      }
+    } catch (e) { }
+
+    // BƯỚC 2: Nếu chưa nhận đủ (ví dụ tab nền không hỗ trợ paste hoặc paste bị cắt ngắn), chèn trực tiếp các thẻ <p>
+    if (!successInserted || (el.textContent || "").trim() === "") {
       try {
         el.innerHTML = "";
-        const dt = new DataTransfer();
-        dt.setData("text/plain", text);
-        const pasteEvt = new ClipboardEvent("paste", {
-          bubbles: true,
-          cancelable: true,
-          clipboardData: dt
+        paragraphs.forEach(para => {
+          const p = document.createElement("p");
+          p.textContent = para;
+          el.appendChild(p);
         });
-        el.dispatchEvent(pasteEvt);
-      } catch (e) { }
-    }
-
-    // Cách 3: Dự phòng chèn DOM Node trực tiếp và phát sự kiện beforeinput + InputEvent
-    if (el.textContent.trim() === "") {
-      try {
-        el.innerHTML = "";
-        const p = document.createElement("p");
-        p.textContent = text;
-        el.appendChild(p);
         el.dispatchEvent(new InputEvent("beforeinput", {
           bubbles: true,
           cancelable: true,
-          inputType: "insertText",
+          inputType: "insertFromPaste",
           data: text
         }));
         el.dispatchEvent(new InputEvent("input", {
           bubbles: true,
           cancelable: true,
-          inputType: "insertText",
+          inputType: "insertFromPaste",
           data: text
         }));
       } catch (e) { }
     }
 
+    // Phát sự kiện input và change
+    el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
@@ -316,10 +345,18 @@
 
     // 3. Gõ nội dung văn bản
     await typeTextIntoInput(inputBox, promptText);
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 600));
 
-    // 4. Bấm nút Gửi ĐÚNG 1 LẦN DUY NHẤT (Ưu tiên nút Send native của trình duyệt)
-    let sendBtn = findSendButton(customSendSelector);
+    // 4. Bấm nút Gửi ĐÚNG 1 LẦN DUY NHẤT (Chờ nút gửi hết disabled)
+    let sendBtn = null;
+    for (let i = 0; i < 15; i++) {
+      sendBtn = findSendButton(customSendSelector);
+      if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true") {
+        break;
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+
     if (sendBtn) {
       try {
         sendBtn.removeAttribute("disabled");
@@ -348,6 +385,9 @@
           bubbles: true
         }));
       } catch (e) { }
+    }
+    return true;
+  }
     }
 
     return true;
@@ -663,9 +703,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.0.8
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.0.9
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.0.8" });
+      sendResponse({ pong: true, version: "1.0.9" });
       return;
     }
 
@@ -674,7 +714,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.0.8) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.0.9) =====");
       console.log("  request.targetUrl       =", request.targetUrl);
       console.log("  request.platformCode    =", request.platformCode);
       console.log("  request.loopCount       =", request.loopCount, typeof request.loopCount);

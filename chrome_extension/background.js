@@ -1,5 +1,5 @@
-// Background Service Worker for Tune-Text AI Prompter (v1.0.8)
-console.log("[Tune-Text Extension] Service Worker khởi động (v1.0.8).");
+// Background Service Worker for Tune-Text AI Prompter (v1.0.9)
+console.log("[Tune-Text Extension] Service Worker khởi động (v1.0.9).");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Lệnh làm mới Tiện ích trực tiếp từ Web UI
