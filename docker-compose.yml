@@ -45,7 +45,7 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: tunetext_cloudflared
     restart: always
-    command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --protocol http2 run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     network_mode: "service:api"
     depends_on:
       - api

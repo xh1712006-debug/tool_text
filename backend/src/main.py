@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from sqlalchemy import text
 
 from src.config import settings
@@ -111,4 +111,18 @@ def health_check():
         },
         message="Trạng thái hệ thống hoạt động ổn định."
     )
+
+
+@app.get("/download-extension", summary="Tải file ZIP tiện ích Chrome dành cho máy khác")
+@app.get("/api/v1/extension/download", summary="Tải file ZIP tiện ích Chrome dành cho máy khác")
+def download_extension():
+    """Cung cấp file nén ZIP tiện ích Chrome để người dùng ở máy khác tải về sử dụng ngay lập tức."""
+    zip_path = os.path.join(STATIC_DIR, "tune-text-extension.zip")
+    if os.path.exists(zip_path):
+        return FileResponse(
+            path=zip_path,
+            filename="tune-text-extension.zip",
+            media_type="application/zip"
+        )
+    raise HTTPException(status_code=404, detail="Chưa tìm thấy file nén tiện ích. Vui lòng liên hệ quản trị viên.")
 
