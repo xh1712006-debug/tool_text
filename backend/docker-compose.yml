@@ -8,12 +8,13 @@ services:
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-170106}
       POSTGRES_DB: ${POSTGRES_DB:-tunetext_db}
     ports:
-      - "5432:5432"
+      - "${DOCKER_PG_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d tunetext_db"]
       interval: 5s
@@ -29,12 +30,12 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_password}@postgres:5432/${POSTGRES_DB:-tunetext_db}
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-170106}@postgres:5432/${POSTGRES_DB:-tunetext_db}
       - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_please_change_in_production_1234567890}
       - ENVIRONMENT=production
       - API_V1_PREFIX=/api/v1
     ports:
-      - "8000:8000"
+      - "${DOCKER_APP_PORT:-8000}:8000"
 
   # 3. Dịch vụ Cloudflare Tunnel (Tùy chọn: Chạy khi có token)
   cloudflared:
@@ -49,4 +50,5 @@ services:
 
 volumes:
   pgdata:
+    name: tunetext_pgdata
     driver: local

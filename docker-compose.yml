@@ -1,26 +1,28 @@
 version: '3.8'
 
 services:
-  # 1. Cơ sở Dữ liệu PostgreSQL 16
+  # 1. Cơ sở Dữ liệu PostgreSQL 16 (Đã đóng gói sẵn cấu hình & dữ liệu tự động)
   postgres:
     image: postgres:16-alpine
     container_name: tunetext_postgres
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-170106}
       POSTGRES_DB: ${POSTGRES_DB:-tunetext_db}
     ports:
-      - "5432:5432"
+      # Ánh xạ ra cổng 5433 trên máy Host để tránh xung đột nếu máy bạn đang chạy PostgreSQL cục bộ (5432)
+      - "${DOCKER_PG_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d tunetext_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # 2. Ứng dụng Tune-Text Monolith (FastAPI + Web UI)
+  # 2. Ứng dụng Tune-Text Monolith (FastAPI + Web UI Fullstack)
   api:
     build:
       context: ./backend
@@ -31,14 +33,14 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_password}@postgres:5432/${POSTGRES_DB:-tunetext_db}
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-170106}@postgres:5432/${POSTGRES_DB:-tunetext_db}
       - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_please_change_in_production_1234567890}
       - ENVIRONMENT=production
       - API_V1_PREFIX=/api/v1
     ports:
-      - "8000:8000"
+      - "${DOCKER_APP_PORT:-8000}:8000"
 
-  # 3. Cloudflare Tunnel (Tùy chọn: Chạy khi có token)
+  # 3. Cloudflare Tunnel (Tùy chọn: Chạy ngầm bảo mật kết nối ra Internet)
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: tunetext_cloudflared
@@ -51,4 +53,5 @@ services:
 
 volumes:
   pgdata:
+    name: tunetext_pgdata
     driver: local
