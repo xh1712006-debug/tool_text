@@ -1,5 +1,25 @@
 # Script tự động tải và cài đặt Cloudflare Tunnel Service trên Windows
-$token = "eyJhIjoiMmI1MGI5ZGJiYjYxY2YyZDg4OTY1MGNhNTViMzVhMTIiLCJ0IjoiNjdlY2M3M2EtMmQwOS00YjI3LWExNzUtMzMzNDFiY2NhMTcyIiwicyI6Ik56bGlabU13TXpndFlqSXhaUzAwTXpCa0xXRXhaV1l0T1RCaVl6Qm1aR1ZqTTJRNCJ9"
+$envFile = Join-Path $PSScriptRoot ".env"
+$rootEnvFile = Join-Path (Split-Path $PSScriptRoot -Parent) ".env"
+$token = ""
+
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match "^\s*CLOUDFLARE_TUNNEL_TOKEN\s*=\s*(.+)$") {
+            $token = $matches[1].Trim()
+        }
+    }
+}
+if (-not $token -and (Test-Path $rootEnvFile)) {
+    Get-Content $rootEnvFile | ForEach-Object {
+        if ($_ -match "^\s*CLOUDFLARE_TUNNEL_TOKEN\s*=\s*(.+)$") {
+            $token = $matches[1].Trim()
+        }
+    }
+}
+if (-not $token) {
+    $token = Read-Host "Nhập Cloudflare Tunnel Token của bạn"
+}
 $cloudflaredPath = Join-Path $PSScriptRoot "cloudflared.exe"
 
 Write-Host "=== CÀI ĐẶT CLOUDFLARE TUNNEL SERVICE ===" -ForegroundColor Cyan

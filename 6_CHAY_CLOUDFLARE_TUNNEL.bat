@@ -29,11 +29,20 @@ if not exist "cloudflared.exe" (
     )
 )
 
-:: 2. Đọc CLOUDFLARE_TUNNEL_TOKEN từ file .env nếu có, kèm fallback token mặc định của bạn
-set "TOKEN=eyJhIjoiMmI1MGI5ZGJiYjYxY2YyZDg4OTY1MGNhNTViMzVhMTIiLCJ0IjoiNjdlY2M3M2EtMmQwOS00YjI3LWExNzUtMzMzNDFiY2NhMTcyIiwicyI6Ik56bGlabU13TXpndFlqSXhaUzAwTXpCa0xXRXhaV1l0T1RCaVl6Qm1aR1ZqTTJRNCJ9"
+:: 2. Đọc CLOUDFLARE_TUNNEL_TOKEN và CLOUDFLARE_TUNNEL_DOMAIN từ file .env (Bảo mật tuyệt đối, không hardcode token trong code)
+set "TOKEN="
+set "CUSTOM_DOMAIN="
+
 if exist ".env" (
     for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
         if "%%A"=="CLOUDFLARE_TUNNEL_TOKEN" if not "%%B"=="" set "TOKEN=%%B"
+        if "%%A"=="CLOUDFLARE_TUNNEL_DOMAIN" if not "%%B"=="" set "CUSTOM_DOMAIN=%%B"
+    )
+)
+if "%TOKEN%"=="" if exist "backend\.env" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("backend\.env") do (
+        if "%%A"=="CLOUDFLARE_TUNNEL_TOKEN" if not "%%B"=="" set "TOKEN=%%B"
+        if "%%A"=="CLOUDFLARE_TUNNEL_DOMAIN" if not "%%B"=="" set "CUSTOM_DOMAIN=%%B"
     )
 )
 
@@ -75,7 +84,13 @@ echo ================================================================
 echo   KHOI CHAY TUNNEL BANG TOKEN CLOUDFLARE (Cua ban)
 echo ================================================================
 echo.
-echo [*] Token: %TOKEN:~0,25%...%TOKEN:~-20%
+if "%TOKEN%"=="" (
+    echo [!] Chua tim thay CLOUDFLARE_TUNNEL_TOKEN trong file .env.
+    set /p "TOKEN=👉 Vui long dan Cloudflare Tunnel Token cua ban: "
+)
+if not "%CUSTOM_DOMAIN%"=="" (
+    echo [*] Link truy cap truc tiep: https://%CUSTOM_DOMAIN%
+)
 echo [*] Dang ket noi toi Cloudflare Edge Network...
 echo [*] Nhan Ctrl + C de dung bat cu luc nao.
 echo.

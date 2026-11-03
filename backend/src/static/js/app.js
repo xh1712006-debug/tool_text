@@ -518,7 +518,7 @@ async function checkSystemHealth() {
         const res = await fetch("/health");
         const data = await res.json();
         if (data.data?.database_status === "ok") {
-            healthBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> <span class="text-xs text-emerald-400 font-medium">PostgreSQL: 170106 OK</span>`;
+            healthBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> <span class="text-xs text-emerald-400 font-medium">PostgreSQL: Hoạt Động (Online)</span>`;
         } else {
             healthBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> <span class="text-xs text-amber-400 font-medium">PostgreSQL: Đang kết nối</span>`;
         }

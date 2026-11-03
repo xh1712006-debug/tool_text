@@ -18,11 +18,21 @@ echo     CÀI ĐẶT CLOUDFLARE TUNNEL THÀNH WINDOWS SERVICE TỰ ĐỘNG
 echo ================================================================
 echo.
 
-set "TOKEN=eyJhIjoiMmI1MGI5ZGJiYjYxY2YyZDg4OTY1MGNhNTViMzVhMTIiLCJ0IjoiNjdlY2M3M2EtMmQwOS00YjI3LWExNzUtMzMzNDFiY2NhMTcyIiwicyI6Ik56bGlabU13TXpndFlqSXhaUzAwTXpCa0xXRXhaV1l0T1RCaVl6Qm1aR1ZqTTJRNCJ9"
+set "TOKEN="
 if exist ".env" (
     for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
         if "%%A"=="CLOUDFLARE_TUNNEL_TOKEN" if not "%%B"=="" set "TOKEN=%%B"
     )
+)
+if "%TOKEN%"=="" if exist "backend\.env" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("backend\.env") do (
+        if "%%A"=="CLOUDFLARE_TUNNEL_TOKEN" if not "%%B"=="" set "TOKEN=%%B"
+    )
+)
+
+if "%TOKEN%"=="" (
+    echo [!] Chưa tìm thấy CLOUDFLARE_TUNNEL_TOKEN trong file .env.
+    set /p "TOKEN=👉 Vui lòng dán Cloudflare Tunnel Token của bạn: "
 )
 
 if not exist "cloudflared.exe" (
@@ -30,7 +40,7 @@ if not exist "cloudflared.exe" (
     powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe' -OutFile 'cloudflared.exe'"
 )
 
-echo [*] Đang cài đặt dịch vụ Cloudflared với Token của bạn...
+echo [*] Đang cài đặt dịch vụ Cloudflared với Token bảo mật...
 echo.
 cloudflared.exe service install %TOKEN%
 

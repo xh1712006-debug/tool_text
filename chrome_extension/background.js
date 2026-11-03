@@ -64,6 +64,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     function isAIMatchTab(t) {
       if (!t || !t.url) return false;
+      if (callerTabId && t.id === callerTabId) return false;
       const u = t.url.toLowerCase();
       if (u.startsWith("chrome://") || u.startsWith("edge://") || u.startsWith("about:")) return false;
       if (u.includes("localhost:8000") || u.includes("127.0.0.1:8000")) return false;
@@ -168,9 +169,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Hàm nhận diện tab AI đang mở (dự phòng trường hợp người dùng mở sẵn Gemini/Claude mà dropdown để ChatGPT)
     function isAnyOpenAITab(t) {
       if (!t || !t.url) return false;
+      if (callerTabId && t.id === callerTabId) return false;
       const u = t.url.toLowerCase();
       if (u.startsWith("chrome://") || u.startsWith("edge://") || u.startsWith("about:")) return false;
-      if (u.includes("localhost:8000") || u.includes("127.0.0.1:8000") || u.includes("nextdev.name.vn") || u.includes("trycloudflare.com")) return false;
+      if (u.includes("localhost:8000") || u.includes("127.0.0.1:8000")) return false;
       const knownDomains = ["gemini.google.com", "chatgpt.com", "claude.ai", "deepseek.com", "poe.com", "perplexity.ai", "muse.ai"];
       return knownDomains.some(d => u.includes(d));
     }

@@ -1,5 +1,15 @@
 // Content Script chạy trực tiếp trên ChatGPT, Claude, Gemini... (Hỗ trợ 100% chạy ngầm / Background Tab)
 (() => {
+  // Tuyệt đối không nạp vào chính trang Tune-Text Platform (Bất kể chạy localhost hay domain/tunnel riêng)
+  if (
+    document.querySelector('meta[name="tune-text-app"]') ||
+    document.querySelector('meta[name="application-name"][content="Tune-Text Platform"]') ||
+    (document.title && document.title.includes("Tune-Text Platform")) ||
+    document.getElementById("tabMainTuner")
+  ) {
+    return;
+  }
+
   console.log("[Tune-Text AI Prompter] Content Script đã nạp vào tab AI (Chế độ chạy ngầm kích hoạt)!");
 
   // Dừng bất kỳ tiến trình cũ nào nếu có

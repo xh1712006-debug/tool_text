@@ -18,14 +18,7 @@
   "content_scripts": [
     {
       "matches": [
-        "http://localhost:8000/*",
-        "http://127.0.0.1:8000/*",
-        "https://localhost:8000/*",
-        "https://127.0.0.1:8000/*",
-        "https://*.nextdev.name.vn/*",
-        "http://*.nextdev.name.vn/*",
-        "https://*.trycloudflare.com/*",
-        "http://*.trycloudflare.com/*"
+        "<all_urls>"
       ],
       "js": [
         "content_tunetext.js"
@@ -40,11 +33,7 @@
         "http://localhost:8000/*",
         "http://127.0.0.1:8000/*",
         "https://localhost:8000/*",
-        "https://127.0.0.1:8000/*",
-        "https://*.nextdev.name.vn/*",
-        "http://*.nextdev.name.vn/*",
-        "https://*.trycloudflare.com/*",
-        "http://*.trycloudflare.com/*"
+        "https://127.0.0.1:8000/*"
       ],
       "js": [
         "content_ai.js"

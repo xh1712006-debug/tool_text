@@ -15,11 +15,11 @@ Tài liệu này cung cấp hướng dẫn từng bước để lập trình vi�
 ### Cách 1: Chạy trực tiếp trên máy cục bộ (Local Development)
 
 1. **Khai báo biến môi trường**:
-   Kiểm tra tệp `backend/.env` (đã được cấu hình sẵn mật khẩu PostgreSQL `170106` và Cloudflare Tunnel Token):
+   Kiểm tra tệp `backend/.env` (được cấu hình mật khẩu PostgreSQL và Cloudflare Tunnel Token của bạn):
    ```env
-   POSTGRES_PASSWORD=170106
-   DATABASE_URL=postgresql+psycopg2://postgres:170106@localhost:5432/tunetext_db
-   CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiMmI1MGI5ZGJiYjYxY2YyZDg4OTY1MGNhNTViMzVhMTIiLCJ0IjoiNjdlY2M3M2EtMmQwOS00YjI3LWExNzUtMzMzNDFiY2NhMTcyIiwicyI6Ik56bGlabU13TXpndFlqSXhaUzAwTXpCa0xXRXhaV1l0T1RCaVl6Qm1aR1ZqTTJRNCJ9
+   POSTGRES_PASSWORD=your_secure_password
+   DATABASE_URL=postgresql+psycopg2://postgres:your_secure_password@localhost:5432/tunetext_db
+   CLOUDFLARE_TUNNEL_TOKEN=your_cloudflare_tunnel_token
    ```
 
 2. **Khởi chạy Server Web Monolith (Frontend + Backend)**:
