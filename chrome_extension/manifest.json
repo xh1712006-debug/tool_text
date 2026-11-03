@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tune-Text AI Prompter (Chạy Tab Bên Cạnh)",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Tự động gõ prompt vào tab ChatGPT, Claude, Gemini, DeepSeek, Poe hoặc bất kỳ trang Web AI nào đang mở sẵn bên cạnh mà không cần mở trình duyệt mới.",
   "permissions": [
     "activeTab",
@@ -21,7 +21,11 @@
         "http://localhost:8000/*",
         "http://127.0.0.1:8000/*",
         "https://localhost:8000/*",
-        "https://127.0.0.1:8000/*"
+        "https://127.0.0.1:8000/*",
+        "https://*.nextdev.name.vn/*",
+        "http://*.nextdev.name.vn/*",
+        "https://*.trycloudflare.com/*",
+        "http://*.trycloudflare.com/*"
       ],
       "js": [
         "content_tunetext.js"
@@ -36,7 +40,11 @@
         "http://localhost:8000/*",
         "http://127.0.0.1:8000/*",
         "https://localhost:8000/*",
-        "https://127.0.0.1:8000/*"
+        "https://127.0.0.1:8000/*",
+        "https://*.nextdev.name.vn/*",
+        "http://*.nextdev.name.vn/*",
+        "https://*.trycloudflare.com/*",
+        "http://*.trycloudflare.com/*"
       ],
       "js": [
         "content_ai.js"

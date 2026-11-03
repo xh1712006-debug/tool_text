@@ -1,5 +1,5 @@
-// Background Service Worker for Tune-Text AI Prompter (v1.0.7)
-console.log("[Tune-Text Extension] Service Worker khởi động (v1.0.7).");
+// Background Service Worker for Tune-Text AI Prompter (v1.0.8)
+console.log("[Tune-Text Extension] Service Worker khởi động (v1.0.8).");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Lệnh làm mới Tiện ích trực tiếp từ Web UI
@@ -23,6 +23,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const durationMinutes = parseFloat(rawData.durationMinutes || rawData.duration_minutes) || 0;
     const delaySeconds = parseFloat(rawData.delaySeconds || rawData.delay_between_prompts) || 3;
     const stayInBackground = rawData.stayInBackground !== false;
+    const batchSize = parseInt(rawData.batchSize || rawData.batch_size, 10) || 1;
 
     const runOptions = {
       loopCount: loopCount,
@@ -34,12 +35,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       delaySeconds: delaySeconds,
       delay_between_prompts: delaySeconds,
       stayInBackground: stayInBackground,
+      batchSize: batchSize,
+      batch_size: batchSize,
       inputSelector: rawData.inputSelector || rawData.customInput || null,
       sendSelector: rawData.sendSelector || rawData.customSend || null,
       stopSelector: rawData.stopSelector || rawData.customStop || null
     };
 
-    console.log("[Tune-Text BG] Bắt đầu xử lý START_IN_ADJACENT_TAB:", { targetUrl, platformCode, loopCount, isInfiniteLoop, durationMinutes, delaySeconds });
+    console.log("[Tune-Text BG] Bắt đầu xử lý START_IN_ADJACENT_TAB:", { targetUrl, platformCode, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, batchSize });
 
     // Lưu vào storage để content_ai.js luôn có thể truy xuất
     if (chrome.storage && chrome.storage.local) {
@@ -78,6 +81,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const runPayload = {
       action: "RUN_PROMPTS",
       prompts: prompts,
+      batchSize: batchSize,
+      batch_size: batchSize,
       loopCount: loopCount,
       loop_count: loopCount,
       isInfiniteLoop: isInfiniteLoop,

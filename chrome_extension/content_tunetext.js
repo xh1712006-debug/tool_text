@@ -4,7 +4,7 @@ console.log("[Tune-Text Extension] Content Script đã nhúng vào Tune-Text th�
 // Đánh dấu để trang Web biết Extension đã sẵn sàng
 function notifyWebPage() {
   document.documentElement.dataset.tuneTextExtension = "active";
-  window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.0.7" } }));
+  window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.0.8" } }));
 }
 
 notifyWebPage();
@@ -27,6 +27,7 @@ window.addEventListener("TUNE_TEXT_REQUEST_START", (event) => {
   const durationMinutes = parseFloat(payload.durationMinutes || payload.duration_minutes) || 0;
   const delaySeconds = parseFloat(payload.delaySeconds || payload.delay_between_prompts) || 3;
   const stayInBackground = payload.stayInBackground !== false;
+  const batchSize = parseInt(payload.batchSize || payload.batch_size, 10) || 1;
 
   const jobOptions = {
     loopCount: loopCount,
@@ -37,7 +38,9 @@ window.addEventListener("TUNE_TEXT_REQUEST_START", (event) => {
     duration_minutes: durationMinutes,
     delaySeconds: delaySeconds,
     delay_between_prompts: delaySeconds,
-    stayInBackground: stayInBackground
+    stayInBackground: stayInBackground,
+    batchSize: batchSize,
+    batch_size: batchSize
   };
 
   // 1. Lưu cấu hình vào chrome.storage.local để content_ai.js luôn đọc được trực tiếp

@@ -928,7 +928,8 @@ window.addEventListener("TUNE_TEXT_PROGRESS_UPDATE", (e) => {
         } else if (data.loop_count > 1) {
             loopInfo = ` (Lượt ${data.current_loop || 1}/${data.loop_count})`;
         }
-        progressCount.textContent = `${data.current_index} / ${data.total_prompts}${loopInfo}`;
+        const unit = (data.batch_size && data.batch_size > 1) ? "Lô " : "";
+        progressCount.textContent = `${unit}${data.current_index} / ${data.total_prompts}${loopInfo}`;
         const pct = Math.round((data.current_index / data.total_prompts) * 100);
         progressBar.style.width = `${pct}%`;
     }
@@ -992,11 +993,64 @@ function updateRPAPromptsCount() {
     if (!text) {
         badge.textContent = "0 đoạn";
         badge.className = "text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono transition";
+        updateRPABatchSummary();
         return;
     }
     const paragraphs = text.split(/\n\s*\n+/).map(p => p.trim()).filter(p => p.length > 0);
     badge.textContent = `${paragraphs.length} đoạn`;
     badge.className = "text-[11px] px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold font-mono transition";
+    updateRPABatchSummary();
+}
+
+// Thiết lập nhanh số lượng đoạn gộp mỗi lần gửi
+function setRPABatchSize(size) {
+    const input = document.getElementById("rpaBatchSize");
+    if (input) {
+        input.value = size;
+        updateRPABatchSummary();
+    }
+}
+
+// Gộp tất cả các đoạn đang có vào gửi đúng 1 lần
+function setRPABatchSizeAll() {
+    const textarea = document.getElementById("rpaPromptsText");
+    const input = document.getElementById("rpaBatchSize");
+    if (textarea && input) {
+        const text = textarea.value.trim();
+        const paragraphs = text ? text.split(/\n\s*\n+/).map(p => p.trim()).filter(p => p.length > 0) : [];
+        const count = Math.max(1, paragraphs.length);
+        input.value = count;
+        updateRPABatchSummary();
+        showToast(`Đã thiết lập gộp tất cả ${count} đoạn vào gửi 1 lần duy nhất!`, "info");
+    }
+}
+
+// Cập nhật tóm tắt số lô (Batch Summary)
+function updateRPABatchSummary() {
+    const textarea = document.getElementById("rpaPromptsText");
+    const input = document.getElementById("rpaBatchSize");
+    const badge = document.getElementById("rpaBatchSummaryBadge");
+    if (!badge) return;
+
+    const rawBatch = parseInt(input?.value, 10);
+    const batchSize = (!isNaN(rawBatch) && rawBatch > 0) ? rawBatch : 1;
+
+    const text = textarea ? textarea.value.trim() : "";
+    const totalPrompts = text ? text.split(/\n\s*\n+/).map(p => p.trim()).filter(p => p.length > 0).length : 0;
+
+    if (totalPrompts === 0) {
+        badge.textContent = (batchSize === 1) ? "Gửi 1 đoạn / lần (Tuần tự)" : `Gộp ${batchSize} đoạn / lần`;
+        return;
+    }
+
+    const totalBatches = Math.ceil(totalPrompts / batchSize);
+    if (batchSize === 1) {
+        badge.textContent = `Gửi tuần tự: ${totalPrompts} lần (mỗi lần 1 đoạn)`;
+    } else if (batchSize >= totalPrompts) {
+        badge.textContent = `Gộp tất cả ${totalPrompts} đoạn gửi đúng 1 lần!`;
+    } else {
+        badge.textContent = `Gộp ${batchSize} đoạn/lần ➔ Gửi thành ${totalBatches} đợt`;
+    }
 }
 
 // Tự động chuẩn hóa khoảng cách: Mỗi đoạn cách nhau đúng 1 dòng trống (\n\n)
@@ -1157,8 +1211,10 @@ async function startRPAPrompter() {
 
     const delaySeconds = parseFloat(document.getElementById("rpaDelaySeconds")?.value) || 3;
     const stayInBackground = document.getElementById("rpaStayInBackground")?.checked ?? true;
+    const rawBatchSize = parseInt(document.getElementById("rpaBatchSize")?.value, 10);
+    const batchSize = (!isNaN(rawBatchSize) && rawBatchSize > 0) ? rawBatchSize : 1;
 
-    console.log("[Tune-Text] Cài đặt khởi chạy Robot:", { modeChoice, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, stayInBackground });
+    console.log("[Tune-Text] Cài đặt khởi chạy Robot:", { modeChoice, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, stayInBackground, batchSize });
 
     if (!promptsText) {
         showToast("Vui lòng nhập các đoạn văn bản cần gửi!", "error");
@@ -1172,26 +1228,31 @@ async function startRPAPrompter() {
         return;
     }
 
+    const totalBatches = Math.ceil(promptsList.length / batchSize);
+    const batchDesc = (batchSize > 1) ? ` | Gộp ${batchSize} đoạn/lần (${totalBatches} đợt)` : "";
+
     // 1. NẾU ĐÃ KÍCH HOẠT CHROME EXTENSION: TỰ ĐỘNG CHUYỂN SANG TAB BÊN CẠNH VÀ GÕ
     if (document.documentElement.dataset.tuneTextExtension === "active") {
-        if (detectedExtensionVersion && detectedExtensionVersion !== "1.0.7") {
+        if (detectedExtensionVersion && detectedExtensionVersion !== "1.0.8") {
             const modal = document.getElementById("extensionReloadModal");
             if (modal) {
                 modal.classList.remove("hidden");
                 return;
             } else {
-                alert(`⚠️ CẢNH BÁO QUAN TRỌNG:\n\nTiện ích Chrome của bạn đang ở bản cũ v${detectedExtensionVersion} (Bản mới sửa triệt để lỗi gửi đúp là v1.0.7).\n\n👉 VUI LÒNG LÀM 2 BƯỚC:\n1. Mở tab chrome://extensions bấm nút xoay tròn 🔄 để Tải lại Extension.\n2. F5 lại tab AI mục tiêu và tab này rồi bấm chạy lại!`);
+                alert(`⚠️ CẢNH BÁO QUAN TRỌNG:\n\nTiện ích Chrome của bạn đang ở bản cũ v${detectedExtensionVersion} (Bản mới nhất có tính năng Gộp Prompt là v1.0.8).\n\n👉 VUI LÒNG LÀM 2 BƯỚC:\n1. Mở tab chrome://extensions bấm nút xoay tròn 🔄 để Tải lại Extension.\n2. F5 lại tab AI mục tiêu và tab này rồi bấm chạy lại!`);
                 return;
             }
         }
 
         const bgMsg = stayInBackground ? " (Chạy ngầm - Bạn có thể dùng tab khác)" : "";
-        showToast(`🚀 Đang tự động gõ vào tab AI (${loopLabel})${bgMsg}...`, "info");
+        showToast(`🚀 Đang tự động gõ vào tab AI (${loopLabel}${batchDesc})${bgMsg}...`, "info");
         window.dispatchEvent(new CustomEvent("TUNE_TEXT_REQUEST_START", {
             detail: {
                 targetUrl: targetUrl,
                 prompts: promptsList,
                 platformCode: platformCode,
+                batchSize: batchSize,
+                batch_size: batchSize,
                 inputSelector: customInput,
                 sendSelector: customSend,
                 stopSelector: customStop,
@@ -1213,8 +1274,10 @@ async function startRPAPrompter() {
 
         const statusCard = document.getElementById("rpaStatusCard");
         statusCard.classList.remove("hidden");
-        document.getElementById("rpaStatusText").textContent = `Đang gõ tự động trên tab bên cạnh (Cài đặt: ${loopLabel})...`;
-        const initialCountStr = isInfiniteLoop ? `0 / ${promptsList.length} (Lượt 1)` : `0 / ${promptsList.length} (Lượt 1/${loopCount})`;
+        document.getElementById("rpaStatusText").textContent = `Đang gõ tự động trên tab bên cạnh (Cài đặt: ${loopLabel}${batchDesc})...`;
+        const totalUnits = (batchSize > 1) ? totalBatches : promptsList.length;
+        const unitWord = (batchSize > 1) ? "Lô " : "";
+        const initialCountStr = isInfiniteLoop ? `${unitWord}0 / ${totalUnits} (Lượt 1)` : `${unitWord}0 / ${totalUnits} (Lượt 1/${loopCount})`;
         document.getElementById("rpaProgressCount").textContent = initialCountStr;
         document.getElementById("rpaProgressBar").style.width = "0%";
 
@@ -1223,7 +1286,7 @@ async function startRPAPrompter() {
         if (logsBox) {
             const initLog = document.createElement("div");
             initLog.className = "text-purple-300 font-medium";
-            initLog.textContent = `[${new Date().toLocaleTimeString()}] 🚀 [Cài đặt Robot] Đã kích hoạt: ${loopLabel} | Nghỉ ${delaySeconds}s mỗi lượt | ${promptsList.length} đoạn văn bản.`;
+            initLog.textContent = `[${new Date().toLocaleTimeString()}] 🚀 [Cài đặt Robot] Đã kích hoạt: ${loopLabel}${batchDesc} | Nghỉ ${delaySeconds}s mỗi lượt | ${promptsList.length} đoạn văn bản.`;
             logsBox.appendChild(initLog);
             logsBox.scrollTop = logsBox.scrollHeight;
         }
@@ -1239,6 +1302,7 @@ async function startRPAPrompter() {
                 prompts_text: promptsText,
                 split_mode: "paragraph",
                 platform_code: platformCode,
+                batch_size: batchSize,
                 custom_input_selector: customInput,
                 custom_send_selector: customSend,
                 custom_stop_selector: customStop,

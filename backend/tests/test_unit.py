@@ -132,3 +132,23 @@ def test_ai_presets_list_and_target_url_routing(client):
     assert "gemini" in codes
     assert "deepseek" in codes
 
+
+def test_rpa_batch_size_grouping():
+    """Kiểm tra thuật toán gom nhóm gộp nhiều đoạn prompt theo Batch Size."""
+    import re
+    raw_text = "Đoạn 1: Prompt A\n\nĐoạn 2: Prompt B\n\nĐoạn 3: Prompt C\n\nĐoạn 4: Prompt D\n\nĐoạn 5: Prompt E"
+    prompts = [p.strip() for p in re.split(r"\n\s*\n+", raw_text) if p.strip()]
+    assert len(prompts) == 5
+
+    # Test gộp 2 đoạn/lần
+    batch_size = 2
+    batched = []
+    for i in range(0, len(prompts), batch_size):
+        chunk = prompts[i:i + batch_size]
+        batched.append("\n\n".join(chunk))
+
+    assert len(batched) == 3
+    assert batched[0] == "Đoạn 1: Prompt A\n\nĐoạn 2: Prompt B"
+    assert batched[1] == "Đoạn 3: Prompt C\n\nĐoạn 4: Prompt D"
+    assert batched[2] == "Đoạn 5: Prompt E"
+

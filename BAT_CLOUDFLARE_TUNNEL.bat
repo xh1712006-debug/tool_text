@@ -24,3 +24,4 @@ if exist ".env" (
 cloudflared.exe tunnel run --token %TOKEN%
 
 pause
+

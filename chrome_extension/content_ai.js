@@ -45,7 +45,7 @@
     return hud;
   }
 
-  function updateHUD(status, current, total, previewText = "", isError = false, currentLoop = 1, loopCount = 1) {
+  function updateHUD(status, current, total, previewText = "", isError = false, currentLoop = 1, loopCount = 1, batchLabel = "") {
     createOrGetHUD();
     const statusEl = document.getElementById("tt-hud-status");
     const counterEl = document.getElementById("tt-hud-counter");
@@ -56,12 +56,13 @@
     if (statusEl) statusEl.style.color = isError ? "#f87171" : "#38bdf8";
 
     if (counterEl) {
+      const unitLabel = batchLabel ? `Lô ${current}/${total} (${batchLabel})` : `${current} / ${total}`;
       if (loopCount > 1 && loopCount < 999999) {
-        counterEl.textContent = `Lượt ${currentLoop}/${loopCount} • Đoạn ${current}/${total}`;
+        counterEl.textContent = `Lượt ${currentLoop}/${loopCount} • ${unitLabel}`;
       } else if (loopCount >= 999999) {
-        counterEl.textContent = `Lượt ${currentLoop} (Vô hạn) • Đoạn ${current}/${total}`;
+        counterEl.textContent = `Lượt ${currentLoop} (Vô hạn) • ${unitLabel}`;
       } else {
-        counterEl.textContent = `${current} / ${total} đoạn`;
+        counterEl.textContent = unitLabel;
       }
     }
     if (fillEl && total > 0) {
@@ -425,6 +426,25 @@
     const loopCount = isInfinite ? 999999 : ((!isNaN(parsedLoop) && parsedLoop > 0) ? parsedLoop : 1);
     const delayBetweenLoops = parseFloat(options.delaySeconds || options.delay_between_prompts) || 3;
     const totalPromptsPerLoop = prompts.length;
+    const batchSize = Math.max(1, parseInt(options.batchSize || options.batch_size, 10) || 1);
+
+    // Tạo danh sách các Lô (Batches) từ danh sách prompts
+    const batches = [];
+    for (let i = 0; i < prompts.length; i += batchSize) {
+      const chunk = prompts.slice(i, i + batchSize);
+      const startNum = i + 1;
+      const endNum = Math.min(i + batchSize, prompts.length);
+      const rangeLabel = (startNum === endNum) ? `đoạn ${startNum}` : `đoạn ${startNum}-${endNum}`;
+      batches.push({
+        batchIndex: batches.length + 1,
+        startNum: startNum,
+        endNum: endNum,
+        rangeLabel: rangeLabel,
+        combinedPrompt: chunk.join("\n\n"),
+        count: chunk.length
+      });
+    }
+    const totalBatchesPerLoop = batches.length;
 
     const startTime = Date.now();
     const maxDurationMs = isTimeMode ? durationMinutes * 60 * 1000 : null;
@@ -437,7 +457,7 @@
       return `[Còn ${m}p${s < 10 ? '0' : ''}${s}s]`;
     }
 
-    console.log(`[Tune-Text Content AI] Khởi động tự động hóa: ${totalPromptsPerLoop} đoạn/lượt | Chế độ: ${isTimeMode ? durationMinutes + ' phút' : (isInfinite ? 'Vô hạn' : loopCount + ' lượt')} | Nghỉ: ${delayBetweenLoops}s`, options);
+    console.log(`[Tune-Text Content AI] Khởi động tự động hóa: ${totalPromptsPerLoop} đoạn/lượt chia thành ${totalBatchesPerLoop} lô (gộp ${batchSize} đoạn/lần) | Chế độ: ${isTimeMode ? durationMinutes + ' phút' : (isInfinite ? 'Vô hạn' : loopCount + ' lượt')} | Nghỉ: ${delayBetweenLoops}s`, options);
 
     let currentLoop = 1;
     for (let loopIdx = 0; loopIdx < loopCount; loopIdx++) {
@@ -455,7 +475,7 @@
         loopPrefix = `[Lượt 1/1]`;
       }
 
-      for (let idx = 0; idx < totalPromptsPerLoop; idx++) {
+      for (let bIdx = 0; bIdx < totalBatchesPerLoop; bIdx++) {
         if (stopRequested) break;
 
         // Kiểm tra thời lượng tối đa
@@ -465,28 +485,34 @@
           break;
         }
 
-        const currentPrompt = prompts[idx];
-        const currentIndex = idx + 1;
+        const currentBatch = batches[bIdx];
+        const currentBatchIndex = bIdx + 1;
+        const batchProgressStr = (batchSize > 1)
+          ? `Lô ${currentBatchIndex}/${totalBatchesPerLoop} (${currentBatch.rangeLabel}/${totalPromptsPerLoop})`
+          : `Đoạn ${currentBatchIndex}/${totalPromptsPerLoop}`;
 
         if (isTimeMode) {
           loopPrefix = `[Lượt ${currentLoop} ${getRemainingStr()}]`;
         }
 
-        updateHUD(`${loopPrefix} Đang gõ đoạn ${currentIndex}/${totalPromptsPerLoop}...`, currentIndex, totalPromptsPerLoop, currentPrompt, false, currentLoop, loopCount);
+        updateHUD(`${loopPrefix} Đang chuẩn bị gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, currentBatch.combinedPrompt, false, currentLoop, loopCount, currentBatch.rangeLabel);
 
         // Báo tiến độ về Tab Tune-Text
         chrome.runtime.sendMessage({
           action: "REPORT_PROGRESS",
           callerTabId: callerTabId,
           data: {
-            current_index: currentIndex,
-            total_prompts: totalPromptsPerLoop,
+            current_index: currentBatchIndex,
+            total_prompts: totalBatchesPerLoop,
+            actual_prompt_count: totalPromptsPerLoop,
+            batch_size: batchSize,
+            batch_label: currentBatch.rangeLabel,
             current_loop: currentLoop,
             loop_count: loopCount,
             duration_minutes: durationMinutes,
             remaining_time_str: getRemainingStr(),
-            status_message: `${loopPrefix} Đang gõ đoạn ${currentIndex}/${totalPromptsPerLoop} (Chạy ngầm)...`,
-            log: `[Tab AI] ${loopPrefix} Đang nhập đoạn ${currentIndex}/${totalPromptsPerLoop}: "${currentPrompt.substring(0, 40)}..."`,
+            status_message: `${loopPrefix} Đang gửi ${batchProgressStr} (Chạy ngầm)...`,
+            log: `[Tab AI] ${loopPrefix} Đang gửi ${batchProgressStr}: "${currentBatch.combinedPrompt.substring(0, 40)}..."`,
             is_completed: false
           }
         });
@@ -496,7 +522,7 @@
         const customStopSel = options.stopSelector || options.customStop || "";
 
         // 1. Chờ AI rảnh từ câu trước và tìm ô chat sẵn sàng
-        updateHUD(`${loopPrefix} Đang chuẩn bị ô chat cho đoạn ${currentIndex}...`, currentIndex, totalPromptsPerLoop);
+        updateHUD(`${loopPrefix} Đang chuẩn bị ô chat cho ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
         let inputBox = await waitForAIReady(customInputSel);
 
         if (!inputBox) {
@@ -510,36 +536,39 @@
           continue;
         }
 
-        // 2. Gõ và gửi đúng 1 lần duy nhất (Không spam, không gửi đúp)
-        updateHUD(`${loopPrefix} Đang gửi đoạn ${currentIndex}/${totalPromptsPerLoop}...`, currentIndex, totalPromptsPerLoop, currentPrompt, false, currentLoop, loopCount);
-        await sendSinglePrompt(inputBox, currentPrompt, customSendSel, customInputSel);
+        // 2. Gõ và gửi đúng 1 lần duy nhất nội dung gộp của Lô
+        updateHUD(`${loopPrefix} Đang gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, currentBatch.combinedPrompt, false, currentLoop, loopCount, currentBatch.rangeLabel);
+        await sendSinglePrompt(inputBox, currentBatch.combinedPrompt, customSendSel, customInputSel);
         if (stopRequested) break;
 
         // 3. Chờ AI phản hồi xong hoàn toàn (Dựa trên nút Stop và độ ổn định text)
-        updateHUD(`${loopPrefix} Đoạn ${currentIndex}/${totalPromptsPerLoop}: Đang chờ AI trả lời xong...`, currentIndex, totalPromptsPerLoop, "", false, currentLoop, loopCount);
+        updateHUD(`${loopPrefix} ${batchProgressStr}: Đang chờ AI trả lời xong...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
         await waitForAIFinish(180000, customStopSel);
 
-        // Báo hoàn thành đoạn này (Chỉ đánh dấu is_completed khi đã chạy đến đoạn cuối của lượt cuối VÀ KHÔNG PHẢI chế độ thời gian / vô hạn)
-        const isAllLoopsCompleted = (!isTimeMode && !isInfinite && currentLoop === loopCount && currentIndex === totalPromptsPerLoop);
+        // Báo hoàn thành lô này
+        const isAllLoopsCompleted = (!isTimeMode && !isInfinite && currentLoop === loopCount && currentBatchIndex === totalBatchesPerLoop);
         chrome.runtime.sendMessage({
           action: "REPORT_PROGRESS",
           callerTabId: callerTabId,
           data: {
-            current_index: currentIndex,
-            total_prompts: totalPromptsPerLoop,
+            current_index: currentBatchIndex,
+            total_prompts: totalBatchesPerLoop,
+            actual_prompt_count: totalPromptsPerLoop,
+            batch_size: batchSize,
+            batch_label: currentBatch.rangeLabel,
             current_loop: currentLoop,
             loop_count: loopCount,
             duration_minutes: durationMinutes,
             remaining_time_str: getRemainingStr(),
-            status_message: `${loopPrefix} Đoạn ${currentIndex}/${totalPromptsPerLoop} đã phản hồi xong.`,
-            log: `[Tab AI] ${loopPrefix} Đoạn ${currentIndex}/${totalPromptsPerLoop} đã được AI phản hồi hoàn tất.`,
+            status_message: `${loopPrefix} ${batchProgressStr} đã phản hồi xong.`,
+            log: `[Tab AI] ${loopPrefix} ${batchProgressStr} đã được AI phản hồi hoàn tất.`,
             is_completed: isAllLoopsCompleted
           }
         });
 
-        // Nghỉ giữa các đoạn trong cùng một lượt
-        if (idx < totalPromptsPerLoop - 1) {
-          updateHUD(`${loopPrefix} Đã xong đoạn ${currentIndex}. Chờ 3s...`, currentIndex, totalPromptsPerLoop);
+        // Nghỉ giữa các lô trong cùng một lượt
+        if (bIdx < totalBatchesPerLoop - 1) {
+          updateHUD(`${loopPrefix} Đã xong ${batchProgressStr}. Chờ 3s...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
           await new Promise(r => setTimeout(r, 3000));
         }
       }
@@ -548,7 +577,7 @@
 
       // Kiểm tra thời lượng trước lượt mới
       if (maxDurationMs && (Date.now() - startTime >= maxDurationMs)) {
-        updateHUD(`⏱️ Đã hết ${durationMinutes} phút. Hoàn thành!`, totalPromptsPerLoop, totalPromptsPerLoop);
+        updateHUD(`⏱️ Đã hết ${durationMinutes} phút. Hoàn thành!`, totalBatchesPerLoop, totalBatchesPerLoop);
         break;
       }
 
@@ -563,8 +592,10 @@
           action: "REPORT_PROGRESS",
           callerTabId: callerTabId,
           data: {
-            current_index: totalPromptsPerLoop,
-            total_prompts: totalPromptsPerLoop,
+            current_index: totalBatchesPerLoop,
+            total_prompts: totalBatchesPerLoop,
+            actual_prompt_count: totalPromptsPerLoop,
+            batch_size: batchSize,
             current_loop: currentLoop,
             loop_count: loopCount,
             duration_minutes: durationMinutes,
@@ -582,7 +613,7 @@
             break;
           }
           const subRem = isTimeMode ? ` ${getRemainingStr()}` : "";
-          updateHUD(`✅ Xong lượt ${currentLoop}! Nghỉ ${s}s rồi tự động gõ lượt ${nextLoop}...${subRem}`, totalPromptsPerLoop, totalPromptsPerLoop);
+          updateHUD(`✅ Xong lượt ${currentLoop}! Nghỉ ${s}s rồi tự động gõ lượt ${nextLoop}...${subRem}`, totalBatchesPerLoop, totalBatchesPerLoop);
           await new Promise(r => setTimeout(r, 1000));
         }
       }
@@ -599,13 +630,15 @@
       finalMsg = `🎉 Hoàn tất quá trình tự động hóa (${currentLoop} lượt).`;
     }
 
-    updateHUD(finalMsg, totalPromptsPerLoop, totalPromptsPerLoop);
+    updateHUD(finalMsg, totalBatchesPerLoop, totalBatchesPerLoop);
     chrome.runtime.sendMessage({
       action: "REPORT_PROGRESS",
       callerTabId: callerTabId,
       data: {
-        current_index: totalPromptsPerLoop,
-        total_prompts: totalPromptsPerLoop,
+        current_index: totalBatchesPerLoop,
+        total_prompts: totalBatchesPerLoop,
+        actual_prompt_count: totalPromptsPerLoop,
+        batch_size: batchSize,
         current_loop: currentLoop,
         loop_count: loopCount,
         duration_minutes: durationMinutes,
@@ -630,9 +663,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.0.7
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.0.8
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.0.7" });
+      sendResponse({ pong: true, version: "1.0.8" });
       return;
     }
 
@@ -641,13 +674,14 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.0.7) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.0.8) =====");
       console.log("  request.targetUrl       =", request.targetUrl);
       console.log("  request.platformCode    =", request.platformCode);
       console.log("  request.loopCount       =", request.loopCount, typeof request.loopCount);
       console.log("  request.isInfiniteLoop  =", request.isInfiniteLoop);
       console.log("  request.durationMinutes =", request.durationMinutes);
       console.log("  request.delaySeconds    =", request.delaySeconds);
+      console.log("  request.batchSize       =", request.batchSize);
       console.log("  request.inputSelector   =", request.inputSelector);
       console.log("  request.sendSelector    =", request.sendSelector);
       console.log("  request.prompts.length  =", (request.prompts || []).length);
@@ -661,6 +695,11 @@
         opts.loopCount = loopCount;
         opts.loop_count = loopCount;
       }
+      const rawBatchSize = request.batchSize || request.batch_size || opts.batchSize || opts.batch_size;
+      const parsedBatchSize = parseInt(rawBatchSize, 10);
+      opts.batchSize = (parsedBatchSize && parsedBatchSize > 0) ? parsedBatchSize : 1;
+      opts.batch_size = opts.batchSize;
+
       opts.durationMinutes = parseFloat(request.durationMinutes || opts.durationMinutes) || 0;
       opts.delaySeconds = parseFloat(request.delaySeconds || opts.delaySeconds) || 3;
       opts.isInfiniteLoop = !!(request.isInfiniteLoop || opts.isInfiniteLoop);
