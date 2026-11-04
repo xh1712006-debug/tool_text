@@ -603,6 +603,30 @@
         updateHUD(`${loopPrefix} ${batchProgressStr}: Đang chờ AI trả lời xong...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
         await waitForAIFinish(180000, customStopSel);
 
+        // 4. Tự động kiểm tra và tải Video về thư mục cùng tên tệp prompt nếu trang sinh ra video
+        const targetVideoFolder = options.folderName || "prompts_video";
+        try {
+          const videoEls = Array.from(document.querySelectorAll("video, a[download], a[href*='.mp4']"));
+          if (!window.__ttDownloadedUrls) window.__ttDownloadedUrls = new Set();
+          for (const vel of videoEls) {
+            let vUrl = vel.src || (vel.querySelector("source") ? vel.querySelector("source").src : null) || vel.href;
+            if (vUrl && (vUrl.startsWith("http") || vUrl.startsWith("blob:")) && !window.__ttDownloadedUrls.has(vUrl)) {
+              window.__ttDownloadedUrls.add(vUrl);
+              const vName = `video_${targetVideoFolder}_lo${currentBatchIndex}_${Date.now()}.mp4`;
+              chrome.runtime.sendMessage({
+                action: "DOWNLOAD_AI_VIDEO",
+                videoUrl: vUrl,
+                folderName: targetVideoFolder,
+                fileName: vName,
+                callerTabId: callerTabId
+              });
+              break;
+            }
+          }
+        } catch (vidErr) {
+          console.warn("[Tune-Text AI] Lỗi kiểm tra video:", vidErr);
+        }
+
         // Báo hoàn thành lô này an toàn
         const isAllLoopsCompleted = (!isTimeMode && !isInfinite && currentLoop === loopCount && currentBatchIndex === totalBatchesPerLoop);
         safeReportProgress(callerTabId, {
@@ -709,9 +733,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.1.0
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.2.0
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.1.0" });
+      sendResponse({ pong: true, version: "1.2.0" });
       return;
     }
 

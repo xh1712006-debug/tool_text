@@ -488,14 +488,14 @@
                                 </span>
                             </div>
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <!-- Nút Tải tệp lên (.docx, .pdf, .txt) -->
-                                <input type="file" id="rpaPromptFileInput" accept=".docx,.pdf,.txt"
+                                <!-- Nút Tải nhiều tệp lên (.docx, .pdf, .txt) -->
+                                <input type="file" id="rpaPromptFileInput" accept=".docx,.pdf,.txt" multiple
                                     onchange="handleRPAPromptFileSelect(this)" class="hidden">
                                 <button type="button" onclick="document.getElementById('rpaPromptFileInput').click()"
-                                    title="Tải tệp Word (.docx), PDF hoặc Text lên để tự động trích xuất các đoạn prompt"
-                                    class="px-2.5 py-1 rounded-lg bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/30 text-xs font-medium transition flex items-center gap-1.5">
+                                    title="Tải 1 hoặc nhiều tệp Word (.docx), PDF hoặc Text lên cùng một lúc"
+                                    class="px-2.5 py-1 rounded-lg bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/30 text-xs font-medium transition flex items-center gap-1.5 shadow-sm">
                                     <i class="fa-solid fa-file-arrow-up text-purple-400"></i>
-                                    <span>Tải Tệp Lên (.docx, .pdf, .txt)</span>
+                                    <span>Tải Tệp Lên (Chọn Nhiều File)</span>
                                 </button>
 
                                 <!-- Nút Chuẩn hóa khoảng cách dòng -->
@@ -511,6 +511,31 @@
                                     class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-500/30 text-xs transition">
                                     <i class="fa-solid fa-trash-can"></i>
                                 </button>
+                            </div>
+                        </div>
+
+                        <!-- Danh Sách Hàng Đợi Nhiều Tệp Prompt & Thư Mục Video Tương Ứng -->
+                        <div id="rpaFileQueueContainer" class="hidden mb-3 p-3 rounded-2xl bg-slate-900/90 border border-purple-500/40 shadow-inner">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-folder-tree text-purple-400"></i>
+                                        <span>Danh Sách Tệp Prompt (<span id="rpaFileQueueCount">0</span> tệp)</span>
+                                    </span>
+                                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Hàng Đợi Sẵn Sàng</span>
+                                </div>
+                                <div class="flex items-center gap-2 text-xs">
+                                    <span class="text-slate-400 text-[11px]">📁 Thư mục lưu video tệp này:</span>
+                                    <span id="rpaActiveFolderBadge" class="text-[11px] font-mono px-2.5 py-0.5 rounded-lg bg-purple-950 text-purple-200 border border-purple-500/40 font-bold">
+                                        chưa_có_tệp
+                                    </span>
+                                    <button type="button" onclick="clearRPAFileQueue()" class="text-slate-400 hover:text-rose-400 text-xs px-2 py-0.5 rounded transition" title="Xóa toàn bộ hàng đợi tệp">
+                                        <i class="fa-solid fa-xmark"></i> Xóa hết
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="rpaFileQueueList" class="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                                <!-- Các thẻ tệp (File chips) được nạp động ở đây -->
                             </div>
                         </div>
 
@@ -948,17 +973,17 @@
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </div>
                 <div>
-                    <h3 class="text-base font-bold text-white">Yêu Cầu Tải Lại Tiện Ích Để Nhận Bản Cập Nhật (v1.1.0)
+                    <h3 class="text-base font-bold text-white">Yêu Cầu Tải Lại Tiện Ích Để Nhận Bản Cập Nhật (v1.2.0)
                     </h3>
                     <p class="text-xs text-amber-400">Trình duyệt Chrome vẫn đang giữ bản cũ trong bộ nhớ (Bản mới nhất
-                        là v1.1.0)</p>
+                        là v1.2.0)</p>
                 </div>
             </div>
 
             <div
                 class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 mb-4 leading-relaxed">
                 <i class="fa-solid fa-wand-magic-sparkles mr-1 text-amber-400"></i>
-                <strong>Có gì mới ở v1.1.0?</strong> Sửa triệt để lỗi cú pháp script (xóa nút Lỗi đỏ trên Chrome), tự động nhận diện tab Google Gemini / ChatGPT đang mở sẵn bên cạnh và giữ trọn vẹn 100% tất cả các đoạn văn bản khi gộp prompt!
+                <strong>Có gì mới ở v1.2.0?</strong> Hỗ trợ hàng đợi nhiều tệp prompt cùng lúc, tự động gắn tên thư mục theo tên file prompt và kích hoạt quyền lưu video tự động!
             </div>
 
             <div class="space-y-3 text-xs text-slate-300">
@@ -1019,7 +1044,7 @@
     </footer>
 
     <!-- App Logic Script (Cache-buster để trình duyệt luôn tải bản mới nhất) -->
-    <script src="/static/js/app.js?v=20261103_0830"></script>
+    <script src="/static/js/app.js?v=20261104_0730"></script>
 </body>
 
 </html>

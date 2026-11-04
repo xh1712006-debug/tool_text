@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, FileResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 
 from src.config import settings
@@ -125,4 +126,28 @@ def download_extension():
             media_type="application/zip"
         )
     raise HTTPException(status_code=404, detail="Chưa tìm thấy file nén tiện ích. Vui lòng liên hệ quản trị viên.")
+
+
+class CreateVideoFolderRequest(BaseModel):
+    folder_name: str
+
+
+@app.post("/api/v1/storage/create-video-folder", summary="Tạo thư mục lưu trữ video theo tên file prompt")
+def create_video_folder(payload: CreateVideoFolderRequest):
+    """
+    Tự động tạo thư mục cùng tên với tệp prompt để sẵn sàng chứa video được sinh ra.
+    """
+    import re
+    safe_name = re.sub(r'[\\/*?:"<>|]', "", payload.folder_name).strip()
+    if not safe_name:
+        safe_name = "prompts_video"
+
+    # Tạo thư mục downloads trong backend và root
+    target_dir = os.path.join(os.path.dirname(BASE_DIR), "downloads", safe_name)
+    os.makedirs(target_dir, exist_ok=True)
+
+    return success_response(
+        data={"folder_name": safe_name, "folder_path": target_dir},
+        message=f"Đã tạo thư mục lưu trữ video '{safe_name}' thành công!"
+    )
 

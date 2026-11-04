@@ -18,7 +18,7 @@
   // Đánh dấu để trang Web biết Extension đã sẵn sàng
   function notifyWebPage() {
     document.documentElement.dataset.tuneTextExtension = "active";
-    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.1.0" } }));
+    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.2.0" } }));
   }
 
   notifyWebPage();
@@ -56,7 +56,9 @@
       delay_between_prompts: delaySeconds,
       stayInBackground: stayInBackground,
       batchSize: batchSize,
-      batch_size: batchSize
+      batch_size: batchSize,
+      folderName: payload.folderName || "prompts_video",
+      fileName: payload.fileName || "prompts.txt"
     };
 
     // 1. Lưu cấu hình vào chrome.storage.local để content_ai.js luôn đọc được trực tiếp

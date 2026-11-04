@@ -1,5 +1,5 @@
-// Background Service Worker for Tune-Text AI Prompter (v1.1.0)
-console.log("[Tune-Text Extension] Service Worker khởi động (v1.1.0).");
+// Background Service Worker for Tune-Text AI Prompter (v1.2.0)
+console.log("[Tune-Text Extension] Service Worker khởi động (v1.2.0).");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Lệnh làm mới Tiện ích trực tiếp từ Web UI
@@ -37,16 +37,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       stayInBackground: stayInBackground,
       batchSize: batchSize,
       batch_size: batchSize,
+      folderName: rawData.folderName || "prompts_video",
+      fileName: rawData.fileName || "prompts.txt",
       inputSelector: rawData.inputSelector || rawData.customInput || null,
       sendSelector: rawData.sendSelector || rawData.customSend || null,
       stopSelector: rawData.stopSelector || rawData.customStop || null
     };
 
-    console.log("[Tune-Text BG] Bắt đầu xử lý START_IN_ADJACENT_TAB:", { targetUrl, platformCode, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, batchSize });
+    const cleanFolder = (rawData.folderName || rawData.fileName || "prompts_video").replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1EA0-\u1EF9 ]/g, "").trim() || "prompts_video";
+    console.log("[Tune-Text BG] Bắt đầu xử lý START_IN_ADJACENT_TAB:", { targetUrl, platformCode, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, batchSize, folderName: cleanFolder });
 
     // Lưu vào storage để content_ai.js luôn có thể truy xuất
     if (chrome.storage && chrome.storage.local) {
-      chrome.storage.local.set({ tune_text_active_job: Object.assign({}, rawData, runOptions) });
+      chrome.storage.local.set({ 
+        tune_text_active_job: Object.assign({}, rawData, runOptions),
+        tune_text_active_folder: cleanFolder
+      });
     }
 
     // Tách hostname và root domain của trang AI mục tiêu (ví dụ: claude.ai, gemini.google.com, chatgpt.com, deepseek.com...)
@@ -95,6 +101,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       targetUrl: targetUrl,
       platformCode: platformCode,
       callerTabId: callerTabId,
+      folderName: cleanFolder,
+      fileName: runOptions.fileName,
       inputSelector: runOptions.inputSelector,
       sendSelector: runOptions.sendSelector,
       stopSelector: runOptions.stopSelector,
@@ -127,8 +135,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           });
         };
 
-        // Kiểm tra xem tab AI đã có content script v1.1.0 chưa
-        const EXT_VER = "1.1.0";
+        // Kiểm tra xem tab AI đã có content script v1.2.0 chưa
+        const EXT_VER = "1.2.0";
         chrome.tabs.sendMessage(aiTab.id, { action: "PING" }, (pingRes) => {
           if (chrome.runtime.lastError || !pingRes || pingRes.version !== EXT_VER) {
             console.log(`[Tune-Text BG] Tab AI đang chạy bản cũ hoặc chưa sẵn sàng. Đang nạp mã v${EXT_VER}...`);
@@ -232,6 +240,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (chrome.runtime.lastError) {
         // Tab Tune-Text đã đóng hoặc F5 tải lại, bỏ qua an toàn mà không sinh lỗi đỏ
       }
+    });
+  }
+
+  // 3. Tự động tải Video về thư mục riêng theo tên tệp prompt
+  if (request.action === "DOWNLOAD_AI_VIDEO" && request.videoUrl) {
+    chrome.storage.local.get(["tune_text_active_folder"], (stored) => {
+      const activeFolder = (request.folderName || stored.tune_text_active_folder || "prompts_video").replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1EA0-\u1EF9 ]/g, "").trim() || "prompts_video";
+      const rawFileName = request.fileName || `video_${Date.now()}.mp4`;
+      const cleanFileName = rawFileName.replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1EA0-\u1EF9.]/g, "");
+      const downloadPath = `TuneText_Videos/${activeFolder}/${cleanFileName}`;
+
+      console.log(`[Tune-Text BG] Bắt đầu tải video vào: ${downloadPath}`);
+      chrome.downloads.download({
+        url: request.videoUrl,
+        filename: downloadPath,
+        saveAs: false,
+        conflictAction: "uniquify"
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.error("[Tune-Text BG] Lỗi khi gọi chrome.downloads:", chrome.runtime.lastError.message);
+        } else {
+          console.log(`[Tune-Text BG] Đã kích hoạt tải video vào '${downloadPath}' (ID: ${downloadId})`);
+          if (request.callerTabId) {
+            chrome.tabs.sendMessage(request.callerTabId, {
+              action: "RPA_PROGRESS",
+              data: {
+                status_message: `📥 Đã tải video vào thư mục '${activeFolder}'`,
+                log: `[Tải Video] Đã tự động lưu video vào thư mục: Downloads/TuneText_Videos/${activeFolder}/${cleanFileName}`,
+                is_completed: false
+              }
+            }, () => { if (chrome.runtime.lastError) { } });
+          }
+        }
+      });
     });
   }
 });

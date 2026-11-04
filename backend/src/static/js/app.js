@@ -1088,58 +1088,170 @@ function clearRPAPrompts() {
     }
 }
 
-// Tiếp nhận tệp chọn từ thẻ input
-function handleRPAPromptFileSelect(input) {
-    if (input.files && input.files[0]) {
-        handleRPAPromptFileUpload(input.files[0]);
-        input.value = ""; // Reset input để có thể chọn lại cùng 1 file
+// =========================================================================
+// QUẢN LÝ HÀNG ĐỢI NHIỀU TỆP PROMPT & THƯ MỤC LƯU VIDEO (Multi-file Queue)
+// =========================================================================
+window.rpaFileQueue = [];
+window.rpaActiveFileIndex = -1;
+
+function getCleanFolderName(fileName) {
+    if (!fileName) return "prompts_video";
+    const baseName = fileName.replace(/\.[^/.]+$/, "");
+    return baseName.replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1EA0-\u1EF9]/g, "_").replace(/_+/g, "_").trim() || "prompts_video";
+}
+
+function renderRPAFileQueue() {
+    const container = document.getElementById("rpaFileQueueContainer");
+    const listEl = document.getElementById("rpaFileQueueList");
+    const countEl = document.getElementById("rpaFileQueueCount");
+    const folderBadge = document.getElementById("rpaActiveFolderBadge");
+    if (!container || !listEl) return;
+
+    if (!window.rpaFileQueue || window.rpaFileQueue.length === 0) {
+        container.classList.add("hidden");
+        if (folderBadge) folderBadge.textContent = "chưa_có_tệp";
+        return;
+    }
+
+    container.classList.remove("hidden");
+    if (countEl) countEl.textContent = window.rpaFileQueue.length;
+
+    const activeItem = window.rpaFileQueue[window.rpaActiveFileIndex];
+    if (folderBadge) {
+        folderBadge.textContent = activeItem ? activeItem.cleanFolderName : "chưa_chọn";
+    }
+
+    listEl.innerHTML = window.rpaFileQueue.map((item, idx) => {
+        const isActive = (idx === window.rpaActiveFileIndex);
+        const activeClass = isActive 
+            ? "bg-purple-600/40 text-purple-200 border-purple-400 shadow-md ring-1 ring-purple-400" 
+            : "bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700/80 hover:border-slate-600";
+        return `
+            <div class="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs cursor-pointer transition ${activeClass}"
+                onclick="selectRPAQueueItem(${idx})">
+                <i class="fa-solid fa-file-lines ${isActive ? 'text-amber-300' : 'text-purple-400'}"></i>
+                <span class="font-medium max-w-[160px] truncate" title="${item.fileName}">${item.fileName}</span>
+                <span class="px-1.5 py-0.5 rounded-md ${isActive ? 'bg-purple-900/60 text-purple-200' : 'bg-slate-900 text-slate-400'} text-[10px] font-mono">
+                    ${item.count} đoạn
+                </span>
+                <button type="button" onclick="event.stopPropagation(); removeRPAQueueItem(${idx})" class="text-slate-400 hover:text-rose-400 ml-1 text-xs" title="Xóa tệp này">
+                    &times;
+                </button>
+            </div>
+        `;
+    }).join("");
+}
+
+function selectRPAQueueItem(index) {
+    if (!window.rpaFileQueue[index]) return;
+    window.rpaActiveFileIndex = index;
+    const item = window.rpaFileQueue[index];
+    const textarea = document.getElementById("rpaPromptsText");
+    if (textarea) {
+        textarea.value = item.content;
+        updateRPAPromptsCount();
+    }
+    renderRPAFileQueue();
+    showToast(`📂 Đã chuyển sang tệp '${item.fileName}' (Thư mục video: '${item.cleanFolderName}')`, "info");
+}
+
+function removeRPAQueueItem(index) {
+    if (!window.rpaFileQueue[index]) return;
+    window.rpaFileQueue.splice(index, 1);
+    if (window.rpaActiveFileIndex >= window.rpaFileQueue.length) {
+        window.rpaActiveFileIndex = window.rpaFileQueue.length - 1;
+    }
+    if (window.rpaActiveFileIndex >= 0) {
+        selectRPAQueueItem(window.rpaActiveFileIndex);
+    } else {
+        const textarea = document.getElementById("rpaPromptsText");
+        if (textarea) textarea.value = "";
+        updateRPAPromptsCount();
+        renderRPAFileQueue();
     }
 }
 
-// Trích xuất tệp tải lên (.docx, .pdf, .txt) và tự động phân tách mỗi đoạn cách nhau 1 dòng trống
+function clearRPAFileQueue() {
+    window.rpaFileQueue = [];
+    window.rpaActiveFileIndex = -1;
+    const textarea = document.getElementById("rpaPromptsText");
+    if (textarea) textarea.value = "";
+    updateRPAPromptsCount();
+    renderRPAFileQueue();
+    showToast("Đã xóa sạch hàng đợi tệp prompt!", "info");
+}
+
+// Tiếp nhận 1 hoặc nhiều tệp chọn từ thẻ input
+async function handleRPAPromptFileSelect(input) {
+    if (input.files && input.files.length > 0) {
+        const fileList = Array.from(input.files);
+        await handleRPAMultipleFilesUpload(fileList);
+        input.value = ""; // Reset input để có thể chọn lại
+    }
+}
+
+// Xử lý nạp đồng thời nhiều tệp (.docx, .pdf, .txt)
+async function handleRPAMultipleFilesUpload(files) {
+    if (!files || files.length === 0) return;
+    const validExts = [".docx", ".pdf", ".txt"];
+    let addedCount = 0;
+
+    showToast(`Đang phân tích và nạp ${files.length} tệp prompt...`, "info");
+
+    for (const file of files) {
+        const nameLower = file.name.toLowerCase();
+        if (!validExts.some(ext => nameLower.endsWith(ext))) {
+            console.warn(`Bỏ qua tệp không hỗ trợ: ${file.name}`);
+            continue;
+        }
+
+        try {
+            let extractedText = "";
+            if (nameLower.endsWith(".txt")) {
+                extractedText = await file.text();
+            } else {
+                const formData = new FormData();
+                formData.append("file", file);
+                const res = await fetchAPI("/tuning/extract-file", {
+                    method: "POST",
+                    body: formData
+                });
+                extractedText = res.data?.extracted_text || "";
+            }
+
+            const paragraphs = extractedText.split(/\n\s*\n+/).map(p => p.trim()).filter(p => p.length > 0);
+            if (paragraphs.length > 0) {
+                const cleanFolder = getCleanFolderName(file.name);
+                window.rpaFileQueue.push({
+                    id: Date.now() + "_" + Math.random().toString(36).substring(2, 7),
+                    fileName: file.name,
+                    cleanFolderName: cleanFolder,
+                    content: paragraphs.join("\n\n"),
+                    count: paragraphs.length
+                });
+                addedCount++;
+            }
+        } catch (err) {
+            console.error(`Lỗi khi đọc tệp ${file.name}:`, err);
+        }
+    }
+
+    if (addedCount > 0) {
+        // Tự động chọn tệp vừa nạp đầu tiên nếu chưa chọn tệp nào
+        if (window.rpaActiveFileIndex === -1 || window.rpaActiveFileIndex >= window.rpaFileQueue.length) {
+            window.rpaActiveFileIndex = window.rpaFileQueue.length - addedCount;
+        }
+        selectRPAQueueItem(window.rpaActiveFileIndex);
+        showToast(`🎉 Đã nạp thành công ${addedCount} tệp vào hàng đợi!`, "success");
+    } else {
+        showToast("Không tìm thấy nội dung hợp lệ từ các tệp đã chọn!", "error");
+    }
+}
+
+// Trích xuất tệp tải lên (.docx, .pdf, .txt) đơn lẻ
 async function handleRPAPromptFileUpload(file) {
     if (!file) return;
-    const nameLower = file.name.toLowerCase();
-    const validExts = [".docx", ".pdf", ".txt"];
-    if (!validExts.some(ext => nameLower.endsWith(ext))) {
-        showToast("Vui lòng chọn tệp Word (.docx), PDF (.pdf) hoặc Text (.txt)!", "error");
-        return;
-    }
-
-    const textarea = document.getElementById("rpaPromptsText");
-    showToast(`Đang trích xuất nội dung từ '${file.name}'...`, "info");
-
-    // Nếu là file .txt đơn giản, đọc ngay trên client không cần qua server
-    if (nameLower.endsWith(".txt")) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const rawText = e.target.result;
-            const paragraphs = rawText.split(/\n\s*\n+/).map(p => p.trim()).filter(p => p.length > 0);
-            textarea.value = paragraphs.join("\n\n");
-            updateRPAPromptsCount();
-            showToast(`🎉 Đã nạp thành công ${paragraphs.length} đoạn từ tệp '${file.name}'!`, "success");
-        };
-        reader.readAsText(file, "UTF-8");
-        return;
-    }
-
-    // Với file .docx hoặc .pdf, gửi lên backend trích xuất
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-        const res = await fetchAPI("/tuning/extract-file", {
-            method: "POST",
-            body: formData
-        });
-        const extractedText = res.data?.extracted_text || "";
-        const paragraphs = extractedText.split(/\n\s*\n+/).map(p => p.trim()).filter(p => p.length > 0);
-        textarea.value = paragraphs.join("\n\n");
-        updateRPAPromptsCount();
-        showToast(`🎉 Đã nạp thành công ${paragraphs.length} đoạn từ tệp '${file.name}' (mỗi đoạn cách nhau 1 dòng trống)!`, "success");
-    } catch (err) {
-        showToast("Lỗi trích xuất tệp: " + err.message, "error");
-    }
+    await handleRPAMultipleFilesUpload([file]);
 }
 
 // Khởi tạo tính năng kéo thả file trực tiếp vào ô nhập liệu
@@ -1168,7 +1280,7 @@ function initRPADragAndDrop() {
         const dt = e.dataTransfer;
         const files = dt.files;
         if (files && files.length > 0) {
-            handleRPAPromptFileUpload(files[0]);
+            handleRPAMultipleFilesUpload(Array.from(files));
         }
     });
 
@@ -1243,16 +1355,28 @@ async function startRPAPrompter() {
 
     // 1. NẾU ĐÃ KÍCH HOẠT CHROME EXTENSION: TỰ ĐỘNG CHUYỂN SANG TAB BÊN CẠNH VÀ GÕ
     if (document.documentElement.dataset.tuneTextExtension === "active") {
-        if (detectedExtensionVersion && !["1.0.9", "1.1.0"].includes(detectedExtensionVersion)) {
+        if (detectedExtensionVersion && !["1.0.9", "1.1.0", "1.2.0"].includes(detectedExtensionVersion)) {
             const modal = document.getElementById("extensionReloadModal");
             if (modal) {
                 modal.classList.remove("hidden");
                 return;
             } else {
-                alert(`⚠️ CẢNH BÁO QUAN TRỌNG:\n\nTiện ích Chrome của bạn đang ở bản cũ v${detectedExtensionVersion} (Bản mới nhất là v1.1.0).\n\n👉 VUI LÒNG LÀM 2 BƯỚC:\n1. Mở tab chrome://extensions bấm nút xoay tròn 🔄 để Tải lại Extension.\n2. F5 lại tab AI mục tiêu và tab này rồi bấm chạy lại!`);
+                alert(`⚠️ CẢNH BÁO QUAN TRỌNG:\n\nTiện ích Chrome của bạn đang ở bản cũ v${detectedExtensionVersion} (Bản mới nhất là v1.2.0).\n\n👉 VUI LÒNG LÀM 2 BƯỚC:\n1. Mở tab chrome://extensions bấm nút xoay tròn 🔄 để Tải lại Extension.\n2. F5 lại tab AI mục tiêu và tab này rồi bấm chạy lại!`);
                 return;
             }
         }
+
+        const activeItem = (window.rpaFileQueue && window.rpaFileQueue[window.rpaActiveFileIndex]) || null;
+        const activeFileName = activeItem ? activeItem.fileName : "prompts.txt";
+        const activeFolderName = activeItem ? activeItem.cleanFolderName : "prompts_video";
+
+        // Tự động tạo thư mục video trên backend
+        try {
+            fetchAPI("/storage/create-video-folder", {
+                method: "POST",
+                body: JSON.stringify({ folder_name: activeFolderName })
+            }).catch(() => {});
+        } catch (e) {}
 
         const bgMsg = stayInBackground ? " (Chạy ngầm - Bạn có thể dùng tab khác)" : "";
         showToast(`🚀 Đang tự động gõ vào tab AI (${loopLabel}${batchDesc})${bgMsg}...`, "info");
@@ -1263,6 +1387,8 @@ async function startRPAPrompter() {
                 platformCode: platformCode,
                 batchSize: batchSize,
                 batch_size: batchSize,
+                fileName: activeFileName,
+                folderName: activeFolderName,
                 inputSelector: customInput,
                 sendSelector: customSend,
                 stopSelector: customStop,
@@ -1298,6 +1424,12 @@ async function startRPAPrompter() {
             initLog.className = "text-purple-300 font-medium";
             initLog.textContent = `[${new Date().toLocaleTimeString()}] 🚀 [Cài đặt Robot] Đã kích hoạt: ${loopLabel}${batchDesc} | Nghỉ ${delaySeconds}s mỗi lượt | ${promptsList.length} đoạn văn bản.`;
             logsBox.appendChild(initLog);
+
+            const folderLog = document.createElement("div");
+            folderLog.className = "text-emerald-400 font-semibold";
+            folderLog.textContent = `[${new Date().toLocaleTimeString()}] 📁 [Thư mục Video]: Đã kích hoạt thư mục '${activeFolderName}' (từ tệp '${activeFileName}') để sẵn sàng lưu video!`;
+            logsBox.appendChild(folderLog);
+
             logsBox.scrollTop = logsBox.scrollHeight;
         }
         return;
