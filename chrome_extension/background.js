@@ -1,6 +1,9 @@
 // Background Service Worker for Tune-Text AI Prompter (v1.2.1)
 console.log("[Tune-Text Extension] Service Worker khởi động (v1.2.1).");
 
+// Quản lý bộ đếm video cho từng thư mục (luôn bắt đầu từ video1, video2...)
+const folderVideoCounters = {};
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Lệnh làm mới Tiện ích trực tiếp từ Web UI
   if (request.action === "RELOAD_EXTENSION") {
@@ -51,6 +54,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     };
 
     const cleanFolder = (rawData.folderName || rawData.fileName || "prompts_video").replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1EA0-\u1EF9 ]/g, "").trim() || "prompts_video";
+    // Đặt lại bộ đếm video cho thư mục này để bắt đầu từ video1
+    folderVideoCounters[cleanFolder] = 0;
+
     console.log("[Tune-Text BG] Bắt đầu xử lý START_IN_ADJACENT_TAB:", { targetUrl, platformCode, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, batchSize, enablePrefixHeader, specialCode, folderName: cleanFolder });
 
     // Lưu vào storage để content_ai.js luôn có thể truy xuất
@@ -252,15 +258,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
   }
 
-  // 3. Tự động tải Video về thư mục riêng theo tên tệp prompt
+  // 3. Tự động tải Video về thư mục riêng theo tên tệp prompt (luôn bắt đầu từ video1, video2...)
   if (request.action === "DOWNLOAD_AI_VIDEO" && request.videoUrl) {
     chrome.storage.local.get(["tune_text_active_folder"], (stored) => {
       const activeFolder = (request.folderName || stored.tune_text_active_folder || "prompts_video").replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1EA0-\u1EF9 ]/g, "").trim() || "prompts_video";
-      const rawFileName = request.fileName || `video_${Date.now()}.mp4`;
-      const cleanFileName = rawFileName.replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1EA0-\u1EF9.]/g, "");
+      
+      // Đếm số thứ tự video bắt đầu từ 1 cho mỗi thư mục
+      if (typeof folderVideoCounters[activeFolder] === "undefined") {
+        folderVideoCounters[activeFolder] = 0;
+      }
+      if (request.videoIndex) {
+        folderVideoCounters[activeFolder] = request.videoIndex;
+      } else {
+        folderVideoCounters[activeFolder] += 1;
+      }
+      const videoNum = folderVideoCounters[activeFolder];
+
+      let ext = "mp4";
+      if (request.videoUrl.includes(".webm") || (request.fileName && request.fileName.endsWith(".webm"))) {
+        ext = "webm";
+      }
+
+      const cleanFileName = `video${videoNum}.${ext}`;
       const downloadPath = `TuneText_Videos/${activeFolder}/${cleanFileName}`;
 
-      console.log(`[Tune-Text BG] Bắt đầu tải video vào: ${downloadPath}`);
+      console.log(`[Tune-Text BG] Bắt đầu tải video #${videoNum} vào: ${downloadPath}`);
       chrome.downloads.download({
         url: request.videoUrl,
         filename: downloadPath,
@@ -275,8 +297,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             chrome.tabs.sendMessage(request.callerTabId, {
               action: "RPA_PROGRESS",
               data: {
-                status_message: `📥 Đã tải video vào thư mục '${activeFolder}'`,
-                log: `[Tải Video] Đã tự động lưu video vào thư mục: Downloads/TuneText_Videos/${activeFolder}/${cleanFileName}`,
+                status_message: `📥 Đã tải video${videoNum}.${ext} vào thư mục '${activeFolder}'`,
+                log: `[Tải Video] Đã tự động lưu: Downloads/TuneText_Videos/${activeFolder}/video${videoNum}.${ext}`,
                 is_completed: false
               }
             }, () => { if (chrome.runtime.lastError) { } });

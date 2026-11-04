@@ -524,10 +524,13 @@
                                     </span>
                                     <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Hàng Đợi Sẵn Sàng</span>
                                 </div>
-                                <div class="flex items-center gap-2 text-xs">
+                                <div class="flex items-center gap-2 text-xs flex-wrap">
                                     <span class="text-slate-400 text-[11px]">📁 Thư mục lưu video tệp này:</span>
                                     <span id="rpaActiveFolderBadge" class="text-[11px] font-mono px-2.5 py-0.5 rounded-lg bg-purple-950 text-purple-200 border border-purple-500/40 font-bold">
                                         chưa_có_tệp
+                                    </span>
+                                    <span class="text-[10px] text-emerald-300 font-mono px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 font-medium" title="Mỗi video tải về sẽ tự động đánh số thứ tự bắt đầu từ 1: video1, video2, video3...">
+                                        <i class="fa-solid fa-video text-emerald-400 mr-1"></i>Tên video: video1, video2...
                                     </span>
                                     <button type="button" onclick="clearRPAFileQueue()" class="text-slate-400 hover:text-rose-400 text-xs px-2 py-0.5 rounded transition" title="Xóa toàn bộ hàng đợi tệp">
                                         <i class="fa-solid fa-xmark"></i> Xóa hết

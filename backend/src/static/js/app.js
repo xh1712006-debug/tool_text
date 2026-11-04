@@ -1553,7 +1553,7 @@ async function startRPAPrompter() {
 
             const folderLog = document.createElement("div");
             folderLog.className = "text-emerald-400 font-semibold";
-            folderLog.textContent = `[${new Date().toLocaleTimeString()}] 📁 [Thư mục Video]: Đã kích hoạt thư mục '${activeFolderName}' (từ tệp '${activeFileName}') để sẵn sàng lưu video!`;
+            folderLog.textContent = `[${new Date().toLocaleTimeString()}] 📁 [Thư mục Video]: Đã kích hoạt thư mục '${activeFolderName}' (từ tệp '${activeFileName}') | Tên video tải về sẽ đánh số từ: video1, video2, video3...`;
             logsBox.appendChild(folderLog);
 
             logsBox.scrollTop = logsBox.scrollHeight;

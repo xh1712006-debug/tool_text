@@ -454,7 +454,9 @@
     await new Promise(r => setTimeout(r, 2000));
   }
 
-  // 11. Tự động nhận diện và tải video sinh ra từ AI về thư mục tương ứng
+  // 11. Tự động nhận diện và tải video sinh ra từ AI về thư mục tương ứng (video1, video2, video3...)
+  if (!window.__videoCounterByFolder) window.__videoCounterByFolder = {};
+
   function checkAndDownloadNewVideos(targetFolder, batchIndex, callerTabId) {
     try {
       if (!window.__ttDownloadedUrls) window.__ttDownloadedUrls = new Set();
@@ -479,25 +481,31 @@
         if (u) candidates.push(u);
       });
 
-      let newFound = 0;
       for (const rawUrl of candidates) {
         if (!rawUrl) continue;
         const cleanUrl = rawUrl.trim();
         if ((cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://") || cleanUrl.startsWith("blob:")) && !window.__ttDownloadedUrls.has(cleanUrl)) {
           window.__ttDownloadedUrls.add(cleanUrl);
-          newFound++;
-          const nowStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+
+          // Tăng số thứ tự video bắt đầu từ 1 cho mỗi thư mục (video1, video2, video3...)
+          if (!window.__videoCounterByFolder[targetFolder]) {
+            window.__videoCounterByFolder[targetFolder] = 0;
+          }
+          window.__videoCounterByFolder[targetFolder] += 1;
+          const videoIndex = window.__videoCounterByFolder[targetFolder];
+
           const ext = cleanUrl.includes(".webm") ? "webm" : "mp4";
-          const vName = `video_${targetFolder}_dot${batchIndex}_${nowStr}_${newFound}.${ext}`;
+          const vName = `video${videoIndex}.${ext}`;
 
           chrome.runtime.sendMessage({
             action: "DOWNLOAD_AI_VIDEO",
             videoUrl: cleanUrl,
             folderName: targetFolder,
             fileName: vName,
+            videoIndex: videoIndex,
             callerTabId: callerTabId
           });
-          console.log(`[Tune-Text Video] Đã phát hiện video và tải vào '${targetFolder}/${vName}':`, cleanUrl);
+          console.log(`[Tune-Text Video] Đã phát hiện video #${videoIndex} và tải vào '${targetFolder}/${vName}':`, cleanUrl);
         }
       }
     } catch (e) {
@@ -544,6 +552,11 @@
     const prefixTemplate = options.prefixTemplate || "hãy tạo cho tôi {count} đợt {batch} {code}";
     const specialCode = (options.specialCode || "").trim();
     const targetVideoFolder = options.folderName || "prompts_video";
+
+    // Luôn bắt đầu đếm số thứ tự video từ 1 cho mỗi thư mục
+    if (!window.__videoCounterByFolder) window.__videoCounterByFolder = {};
+    window.__videoCounterByFolder[targetVideoFolder] = 0;
+    if (window.__ttDownloadedUrls) window.__ttDownloadedUrls.clear();
 
     // Tạo danh sách các Lô (Batches) từ danh sách prompts
     const batches = [];
