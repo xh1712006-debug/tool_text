@@ -541,7 +541,9 @@
     const totalPromptsPerLoop = prompts.length;
     const batchSize = Math.max(1, parseInt(options.batchSize || options.batch_size, 10) || 1);
     const enablePrefixHeader = (options.enablePrefixHeader !== false);
+    const prefixTemplate = options.prefixTemplate || "hãy tạo cho tôi {count} đợt {batch} {code}";
     const specialCode = (options.specialCode || "").trim();
+    const targetVideoFolder = options.folderName || "prompts_video";
 
     // Tạo danh sách các Lô (Batches) từ danh sách prompts
     const batches = [];
@@ -606,15 +608,20 @@
           ? `Lô ${currentBatchIndex}/${totalBatchesPerLoop} (${currentBatch.rangeLabel}/${totalPromptsPerLoop})`
           : `Đoạn ${currentBatchIndex}/${totalPromptsPerLoop}`;
 
-        // Ghép câu lệnh mở đầu tự động: "hãy tạo cho tôi [số lượng] đợt [thứ mấy] [mã đặc biệt]"
+        // Ghép câu lệnh mở đầu tự động: Hỗ trợ tùy biến 100% qua template người dùng
         let promptToSend = currentBatch.combinedPrompt;
         let prefixHeader = "";
         if (enablePrefixHeader) {
-          prefixHeader = `hãy tạo cho tôi ${currentBatch.count} đợt ${currentBatchIndex}`;
-          if (specialCode) {
-            prefixHeader += ` ${specialCode}`;
+          prefixHeader = prefixTemplate
+            .replace(/{count}/g, currentBatch.count)
+            .replace(/{batch}/g, currentBatchIndex)
+            .replace(/{code}/g, specialCode)
+            .replace(/{folder}/g, targetVideoFolder)
+            .replace(/\s+/g, " ")
+            .trim();
+          if (!prefixHeader.endsWith(":")) {
+            prefixHeader += ":";
           }
-          prefixHeader += ":";
           promptToSend = `${prefixHeader}\n\n${currentBatch.combinedPrompt}`;
         }
 
@@ -821,6 +828,7 @@
       opts.batch_size = opts.batchSize;
 
       opts.enablePrefixHeader = (request.enablePrefixHeader !== undefined) ? request.enablePrefixHeader : (opts.enablePrefixHeader !== undefined ? opts.enablePrefixHeader : true);
+      opts.prefixTemplate = request.prefixTemplate || opts.prefixTemplate || "hãy tạo cho tôi {count} đợt {batch} {code}";
       opts.specialCode = request.specialCode || opts.specialCode || "";
       opts.folderName = request.folderName || opts.folderName || "prompts_video";
 

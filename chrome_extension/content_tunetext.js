@@ -45,6 +45,7 @@
     const stayInBackground = payload.stayInBackground !== false;
     const batchSize = parseInt(payload.batchSize || payload.batch_size, 10) || 1;
     const enablePrefixHeader = payload.enablePrefixHeader !== false;
+    const prefixTemplate = payload.prefixTemplate || "hãy tạo cho tôi {count} đợt {batch} {code}";
     const specialCode = payload.specialCode || "";
 
     const jobOptions = {
@@ -60,6 +61,7 @@
       batchSize: batchSize,
       batch_size: batchSize,
       enablePrefixHeader: enablePrefixHeader,
+      prefixTemplate: prefixTemplate,
       specialCode: specialCode,
       folderName: payload.folderName || "prompts_video",
       fileName: payload.fileName || "prompts.txt"

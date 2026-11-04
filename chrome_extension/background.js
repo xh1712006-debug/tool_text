@@ -25,6 +25,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const stayInBackground = rawData.stayInBackground !== false;
     const batchSize = parseInt(rawData.batchSize || rawData.batch_size, 10) || 1;
     const enablePrefixHeader = rawData.enablePrefixHeader !== false;
+    const prefixTemplate = rawData.prefixTemplate || "hãy tạo cho tôi {count} đợt {batch} {code}";
     const specialCode = rawData.specialCode || "";
 
     const runOptions = {
@@ -40,6 +41,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       batchSize: batchSize,
       batch_size: batchSize,
       enablePrefixHeader: enablePrefixHeader,
+      prefixTemplate: prefixTemplate,
       specialCode: specialCode,
       folderName: rawData.folderName || "prompts_video",
       fileName: rawData.fileName || "prompts.txt",
@@ -95,6 +97,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       batchSize: batchSize,
       batch_size: batchSize,
       enablePrefixHeader: enablePrefixHeader,
+      prefixTemplate: prefixTemplate,
       specialCode: specialCode,
       loopCount: loopCount,
       loop_count: loopCount,

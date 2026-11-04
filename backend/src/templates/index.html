@@ -699,37 +699,83 @@
                             </span>
                         </div>
 
-                        <!-- Tự Động Thêm Câu Lệnh Mở Đầu & Đoạn Mã Đặc Biệt (Prefix Command) -->
-                        <div class="pt-3 border-t border-slate-800/80 space-y-2.5">
+                        <!-- Tự Động Thêm Câu Lệnh Mở Đầu & Đoạn Mã Đặc Biệt (Tùy Biến 100% Theo Ý Người Dùng) -->
+                        <div class="pt-3 border-t border-slate-800/80 space-y-3">
                             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                 <label class="flex items-center gap-2 text-xs text-purple-300 font-semibold cursor-pointer">
                                     <input type="checkbox" id="rpaEnablePrefixHeader" checked onchange="updateRPAPrefixPreview()"
                                         class="rounded bg-slate-800 border-slate-700 text-purple-600 focus:ring-0">
                                     <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
-                                    <span>Tự động chèn câu lệnh mở đầu: "hãy tạo cho tôi [số lượng] đợt [thứ mấy] [mã đặc biệt]"</span>
+                                    <span>Chèn câu lệnh mở đầu trước mỗi đợt gửi (Bật/Tắt tùy ý)</span>
                                 </label>
-                                <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-medium">
-                                    Ghép lệnh AI tự động
+                                <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-medium">
+                                    Tùy biến Prompt 100%
                                 </span>
                             </div>
 
-                            <div id="rpaPrefixConfigPanel" class="grid grid-cols-1 sm:grid-cols-12 gap-3 pl-6">
-                                <div class="sm:col-span-5 space-y-1">
-                                    <label class="block text-[11px] text-slate-400 font-medium">
-                                        Đoạn mã đặc biệt kèm theo (Tùy chọn)
-                                    </label>
-                                    <input type="text" id="rpaSpecialCode" placeholder="Ví dụ: --ar 16:9, mã tập phim, phong cách..."
+                            <div id="rpaPrefixConfigPanel" class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3 transition-opacity">
+                                <!-- Khung sửa mẫu câu tùy biến -->
+                                <div class="space-y-1.5">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <label class="text-[11px] text-slate-300 font-medium flex items-center gap-1.5">
+                                            <i class="fa-solid fa-pen-to-square text-purple-400"></i>
+                                            <span>Mẫu câu lệnh mở đầu (Bạn có thể sửa thành bất kỳ câu prompt nào bạn muốn):</span>
+                                        </label>
+                                        <button type="button" onclick="resetRPAPrefixTemplate()"
+                                            class="text-[10px] text-slate-400 hover:text-purple-300 transition flex items-center gap-1">
+                                            <i class="fa-solid fa-arrow-rotate-left"></i> Khôi phục mẫu gốc
+                                        </button>
+                                    </div>
+                                    <input type="text" id="rpaPrefixTemplate"
+                                        value="hãy tạo cho tôi {count} đợt {batch} {code}"
                                         oninput="updateRPAPrefixPreview()"
-                                        class="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-purple-400 font-mono placeholder:text-slate-600">
+                                        placeholder="Ví dụ: hãy tạo cho tôi {count} đợt {batch} {code}"
+                                        class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-purple-400 font-mono">
+                                    
+                                    <!-- Các nút bấm chèn biến nhanh -->
+                                    <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                                        <span class="text-[10px] text-slate-400 mr-1">Chèn nhanh biến:</span>
+                                        <button type="button" onclick="insertRPATag('{count}')"
+                                            class="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[10px] font-mono transition"
+                                            title="Số lượng đoạn gửi trong đợt này">
+                                            + {count} (Số lượng)
+                                        </button>
+                                        <button type="button" onclick="insertRPATag('{batch}')"
+                                            class="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[10px] font-mono transition"
+                                            title="Thứ tự đợt gửi (Đợt 1, 2, 3...)">
+                                            + {batch} (Đợt gửi)
+                                        </button>
+                                        <button type="button" onclick="insertRPATag('{code}')"
+                                            class="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[10px] font-mono transition"
+                                            title="Đoạn mã đặc biệt kèm theo">
+                                            + {code} (Mã đặc biệt)
+                                        </button>
+                                        <button type="button" onclick="insertRPATag('{folder}')"
+                                            class="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-purple-300 border border-slate-700 text-[10px] font-mono transition"
+                                            title="Tên thư mục tệp prompt">
+                                            + {folder} (Tên thư mục)
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="sm:col-span-7 flex flex-col justify-end">
-                                    <div class="p-2 rounded-xl bg-slate-950/80 border border-purple-500/30 text-xs">
-                                        <div class="text-[10px] text-slate-400 font-medium mb-0.5 flex items-center gap-1">
-                                            <i class="fa-solid fa-eye text-purple-400"></i>
-                                            <span>Xem trước câu mở đầu gửi vào AI:</span>
-                                        </div>
-                                        <div id="rpaPrefixPreviewText" class="text-xs text-amber-300 font-mono font-medium truncate">
-                                            hãy tạo cho tôi 1 đợt 1:
+
+                                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2 border-t border-slate-800/80">
+                                    <div class="sm:col-span-5 space-y-1">
+                                        <label class="block text-[11px] text-slate-400 font-medium">
+                                            Đoạn mã đặc biệt thay vào {code} (Tùy chọn)
+                                        </label>
+                                        <input type="text" id="rpaSpecialCode" placeholder="Ví dụ: --ar 16:9, mã phong cách, seed..."
+                                            oninput="updateRPAPrefixPreview()"
+                                            class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-purple-400 font-mono placeholder:text-slate-600">
+                                    </div>
+                                    <div class="sm:col-span-7 flex flex-col justify-end">
+                                        <div class="p-2.5 rounded-xl bg-slate-900/90 border border-purple-500/30 text-xs">
+                                            <div class="text-[10px] text-slate-400 font-medium mb-1 flex items-center gap-1">
+                                                <i class="fa-solid fa-eye text-purple-400"></i>
+                                                <span>Xem trước câu lệnh mở đầu sẽ gửi vào AI (Đợt 1):</span>
+                                            </div>
+                                            <div id="rpaPrefixPreviewText" class="text-xs text-amber-300 font-mono font-medium truncate">
+                                                hãy tạo cho tôi 1 đợt 1:
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

@@ -586,6 +586,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Khôi phục cài đặt câu mở đầu và mã đặc biệt
+    const savedPrefixTemplate = localStorage.getItem("tune_text_prefix_template");
+    if (savedPrefixTemplate !== null) {
+        const tplInput = document.getElementById("rpaPrefixTemplate");
+        if (tplInput) tplInput.value = savedPrefixTemplate;
+    }
     const savedSpecialCode = localStorage.getItem("tune_text_special_code");
     if (savedSpecialCode !== null) {
         const scInput = document.getElementById("rpaSpecialCode");
@@ -1081,6 +1086,7 @@ function updateRPABatchSummary() {
 // Cập nhật xem trước câu mở đầu gửi vào AI (Prefix Command Preview)
 function updateRPAPrefixPreview() {
     const chk = document.getElementById("rpaEnablePrefixHeader");
+    const templateInput = document.getElementById("rpaPrefixTemplate");
     const specialCodeInput = document.getElementById("rpaSpecialCode");
     const previewEl = document.getElementById("rpaPrefixPreviewText");
     const panel = document.getElementById("rpaPrefixConfigPanel");
@@ -1098,7 +1104,7 @@ function updateRPAPrefixPreview() {
     }
 
     if (!isEnabled) {
-        previewEl.textContent = "(Đã tắt chèn câu mở đầu - Gửi trực tiếp nội dung prompt)";
+        previewEl.textContent = "(Đã tắt chèn câu mở đầu - Gửi trực tiếp nội dung prompt vào AI)";
         previewEl.className = "text-xs text-slate-500 font-mono italic";
         return;
     }
@@ -1107,8 +1113,17 @@ function updateRPAPrefixPreview() {
     const rawBatch = parseInt(batchInput?.value, 10);
     const count = (!isNaN(rawBatch) && rawBatch > 0) ? rawBatch : 1;
     const specialCode = specialCodeInput ? specialCodeInput.value.trim() : "";
+    let template = templateInput ? templateInput.value.trim() : "hãy tạo cho tôi {count} đợt {batch} {code}";
+    if (!template) template = "hãy tạo cho tôi {count} đợt {batch} {code}";
+
+    // Lấy tên thư mục tệp đang chọn nếu có
+    const activeItem = (window.rpaFileQueue && window.rpaFileQueue[window.rpaActiveFileIndex]) || null;
+    const folderName = activeItem ? activeItem.cleanFolderName : "prompts_video";
 
     // Lưu vào localStorage
+    if (templateInput) {
+        localStorage.setItem("tune_text_prefix_template", templateInput.value);
+    }
     if (specialCodeInput) {
         localStorage.setItem("tune_text_special_code", specialCode);
     }
@@ -1116,12 +1131,41 @@ function updateRPAPrefixPreview() {
         localStorage.setItem("tune_text_enable_prefix", isEnabled ? "1" : "0");
     }
 
-    let sentence = `hãy tạo cho tôi ${count} đợt 1`;
-    if (specialCode) {
-        sentence += ` ${specialCode}`;
+    // Thay thế các biến để hiển thị xem trước cho đợt 1
+    let previewSentence = template
+        .replace(/{count}/g, count)
+        .replace(/{batch}/g, "1")
+        .replace(/{code}/g, specialCode)
+        .replace(/{folder}/g, folderName)
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!previewSentence.endsWith(":")) {
+        previewSentence += ":";
     }
-    sentence += ":";
-    previewEl.textContent = sentence;
+    previewEl.textContent = previewSentence;
+}
+
+// Chèn nhanh thẻ biến vào ô mẫu câu
+function insertRPATag(tag) {
+    const input = document.getElementById("rpaPrefixTemplate");
+    if (!input) return;
+    const start = input.selectionStart || input.value.length;
+    const end = input.selectionEnd || input.value.length;
+    const val = input.value;
+    input.value = val.substring(0, start) + " " + tag + " " + val.substring(end);
+    input.focus();
+    updateRPAPrefixPreview();
+}
+
+// Khôi phục mẫu câu mặc định ban đầu
+function resetRPAPrefixTemplate() {
+    const input = document.getElementById("rpaPrefixTemplate");
+    if (input) {
+        input.value = "hãy tạo cho tôi {count} đợt {batch} {code}";
+        updateRPAPrefixPreview();
+        showToast("Đã khôi phục mẫu câu lệnh gốc: hãy tạo cho tôi {count} đợt {batch} {code}", "info");
+    }
 }
 
 // Tự động chuẩn hóa khoảng cách: Mỗi đoạn cách nhau đúng 1 dòng trống (\n\n)
@@ -1397,9 +1441,10 @@ async function startRPAPrompter() {
     const rawBatchSize = parseInt(document.getElementById("rpaBatchSize")?.value, 10);
     const batchSize = (!isNaN(rawBatchSize) && rawBatchSize > 0) ? rawBatchSize : 1;
     const enablePrefixHeader = document.getElementById("rpaEnablePrefixHeader")?.checked ?? true;
+    const prefixTemplate = document.getElementById("rpaPrefixTemplate")?.value.trim() || "hãy tạo cho tôi {count} đợt {batch} {code}";
     const specialCode = document.getElementById("rpaSpecialCode")?.value.trim() || "";
 
-    console.log("[Tune-Text] Cài đặt khởi chạy Robot:", { modeChoice, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, stayInBackground, batchSize, enablePrefixHeader, specialCode });
+    console.log("[Tune-Text] Cài đặt khởi chạy Robot:", { modeChoice, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, stayInBackground, batchSize, enablePrefixHeader, prefixTemplate, specialCode });
 
     if (!promptsText) {
         showToast("Vui lòng nhập các đoạn văn bản cần gửi!", "error");
@@ -1451,6 +1496,7 @@ async function startRPAPrompter() {
                 batchSize: batchSize,
                 batch_size: batchSize,
                 enablePrefixHeader: enablePrefixHeader,
+                prefixTemplate: prefixTemplate,
                 specialCode: specialCode,
                 fileName: activeFileName,
                 folderName: activeFolderName,
@@ -1493,10 +1539,15 @@ async function startRPAPrompter() {
             if (enablePrefixHeader) {
                 const prefixLog = document.createElement("div");
                 prefixLog.className = "text-amber-300 font-medium";
-                let previewCmd = `hãy tạo cho tôi ${batchSize} đợt 1`;
-                if (specialCode) previewCmd += ` ${specialCode}`;
-                previewCmd += ":";
-                prefixLog.textContent = `[${new Date().toLocaleTimeString()}] 🪄 [Câu mở đầu tự động]: Sẽ chèn "${previewCmd}" trước mỗi đợt gửi.`;
+                let previewCmd = prefixTemplate
+                    .replace(/{count}/g, batchSize)
+                    .replace(/{batch}/g, "1")
+                    .replace(/{code}/g, specialCode)
+                    .replace(/{folder}/g, activeFolderName)
+                    .replace(/\s+/g, " ")
+                    .trim();
+                if (!previewCmd.endsWith(":")) previewCmd += ":";
+                prefixLog.textContent = `[${new Date().toLocaleTimeString()}] 🪄 [Mẫu câu mở đầu]: Sẽ chèn "${previewCmd}" trước mỗi đợt gửi.`;
                 logsBox.appendChild(prefixLog);
             }
 
@@ -1521,6 +1572,7 @@ async function startRPAPrompter() {
                 platform_code: platformCode,
                 batch_size: batchSize,
                 enable_prefix_header: enablePrefixHeader,
+                prefix_template: prefixTemplate,
                 special_code: specialCode,
                 custom_input_selector: customInput,
                 custom_send_selector: customSend,

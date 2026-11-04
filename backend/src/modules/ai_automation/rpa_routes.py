@@ -144,10 +144,15 @@ def start_rpa(payload: StartRPARequest, current_user: Optional[User] = Depends(g
         chunk = prompts[i:i + batch_size]
         combined = "\n\n".join(chunk)
         if payload.enable_prefix_header:
-            header = f"hãy tạo cho tôi {len(chunk)} đợt {batch_idx}"
-            if payload.special_code and payload.special_code.strip():
-                header += f" {payload.special_code.strip()}"
-            header += ":"
+            tpl = payload.prefix_template or "hãy tạo cho tôi {count} đợt {batch} {code}"
+            header = (
+                tpl.replace("{count}", str(len(chunk)))
+                   .replace("{batch}", str(batch_idx))
+                   .replace("{code}", (payload.special_code or "").strip())
+                   .strip()
+            )
+            if not header.endswith(":"):
+                header += ":"
             combined = f"{header}\n\n{combined}"
         batched_prompts.append(combined)
         batch_idx += 1
