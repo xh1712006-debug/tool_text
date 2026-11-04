@@ -136,14 +136,22 @@ def start_rpa(payload: StartRPARequest, current_user: Optional[User] = Depends(g
             detail="Không tìm thấy đoạn văn bản hợp lệ sau khi phân tách."
         )
 
-    # Gộp đoạn nếu người dùng yêu cầu batch_size > 1 (Chế độ Gộp gửi hàng loạt)
+    # Gộp đoạn theo batch_size và tự động chèn câu lệnh mở đầu nếu được bật
     batch_size = max(1, payload.batch_size or 1)
-    if batch_size > 1:
-        batched_prompts = []
-        for i in range(0, len(prompts), batch_size):
-            chunk = prompts[i:i + batch_size]
-            batched_prompts.append("\n\n".join(chunk))
-        prompts = batched_prompts
+    batched_prompts = []
+    batch_idx = 1
+    for i in range(0, len(prompts), batch_size):
+        chunk = prompts[i:i + batch_size]
+        combined = "\n\n".join(chunk)
+        if payload.enable_prefix_header:
+            header = f"hãy tạo cho tôi {len(chunk)} đợt {batch_idx}"
+            if payload.special_code and payload.special_code.strip():
+                header += f" {payload.special_code.strip()}"
+            header += ":"
+            combined = f"{header}\n\n{combined}"
+        batched_prompts.append(combined)
+        batch_idx += 1
+    prompts = batched_prompts
 
     RPAChatGPTService.start_in_background(
         target_url=payload.target_url,

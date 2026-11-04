@@ -585,6 +585,19 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // Khôi phục cài đặt câu mở đầu và mã đặc biệt
+    const savedSpecialCode = localStorage.getItem("tune_text_special_code");
+    if (savedSpecialCode !== null) {
+        const scInput = document.getElementById("rpaSpecialCode");
+        if (scInput) scInput.value = savedSpecialCode;
+    }
+    const savedEnablePrefix = localStorage.getItem("tune_text_enable_prefix");
+    if (savedEnablePrefix !== null) {
+        const epChk = document.getElementById("rpaEnablePrefixHeader");
+        if (epChk) epChk.checked = (savedEnablePrefix === "1");
+    }
+    updateRPAPrefixPreview();
+
     // Kiểm tra Extension nếu đã nạp
     setTimeout(() => {
         if (document.documentElement.dataset.tuneTextExtension === "active") {
@@ -1050,6 +1063,7 @@ function updateRPABatchSummary() {
 
     if (totalPrompts === 0) {
         badge.textContent = (batchSize === 1) ? "Gửi 1 đoạn / lần (Tuần tự)" : `Gộp ${batchSize} đoạn / lần`;
+        updateRPAPrefixPreview();
         return;
     }
 
@@ -1061,6 +1075,53 @@ function updateRPABatchSummary() {
     } else {
         badge.textContent = `Gộp ${batchSize} đoạn/lần ➔ Gửi thành ${totalBatches} đợt`;
     }
+    updateRPAPrefixPreview();
+}
+
+// Cập nhật xem trước câu mở đầu gửi vào AI (Prefix Command Preview)
+function updateRPAPrefixPreview() {
+    const chk = document.getElementById("rpaEnablePrefixHeader");
+    const specialCodeInput = document.getElementById("rpaSpecialCode");
+    const previewEl = document.getElementById("rpaPrefixPreviewText");
+    const panel = document.getElementById("rpaPrefixConfigPanel");
+    const batchInput = document.getElementById("rpaBatchSize");
+
+    if (!previewEl) return;
+
+    const isEnabled = chk ? chk.checked : true;
+    if (panel) {
+        if (isEnabled) {
+            panel.classList.remove("opacity-40", "pointer-events-none");
+        } else {
+            panel.classList.add("opacity-40", "pointer-events-none");
+        }
+    }
+
+    if (!isEnabled) {
+        previewEl.textContent = "(Đã tắt chèn câu mở đầu - Gửi trực tiếp nội dung prompt)";
+        previewEl.className = "text-xs text-slate-500 font-mono italic";
+        return;
+    }
+
+    previewEl.className = "text-xs text-amber-300 font-mono font-medium truncate";
+    const rawBatch = parseInt(batchInput?.value, 10);
+    const count = (!isNaN(rawBatch) && rawBatch > 0) ? rawBatch : 1;
+    const specialCode = specialCodeInput ? specialCodeInput.value.trim() : "";
+
+    // Lưu vào localStorage
+    if (specialCodeInput) {
+        localStorage.setItem("tune_text_special_code", specialCode);
+    }
+    if (chk) {
+        localStorage.setItem("tune_text_enable_prefix", isEnabled ? "1" : "0");
+    }
+
+    let sentence = `hãy tạo cho tôi ${count} đợt 1`;
+    if (specialCode) {
+        sentence += ` ${specialCode}`;
+    }
+    sentence += ":";
+    previewEl.textContent = sentence;
 }
 
 // Tự động chuẩn hóa khoảng cách: Mỗi đoạn cách nhau đúng 1 dòng trống (\n\n)
@@ -1335,8 +1396,10 @@ async function startRPAPrompter() {
     const stayInBackground = document.getElementById("rpaStayInBackground")?.checked ?? true;
     const rawBatchSize = parseInt(document.getElementById("rpaBatchSize")?.value, 10);
     const batchSize = (!isNaN(rawBatchSize) && rawBatchSize > 0) ? rawBatchSize : 1;
+    const enablePrefixHeader = document.getElementById("rpaEnablePrefixHeader")?.checked ?? true;
+    const specialCode = document.getElementById("rpaSpecialCode")?.value.trim() || "";
 
-    console.log("[Tune-Text] Cài đặt khởi chạy Robot:", { modeChoice, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, stayInBackground, batchSize });
+    console.log("[Tune-Text] Cài đặt khởi chạy Robot:", { modeChoice, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, stayInBackground, batchSize, enablePrefixHeader, specialCode });
 
     if (!promptsText) {
         showToast("Vui lòng nhập các đoạn văn bản cần gửi!", "error");
@@ -1355,13 +1418,13 @@ async function startRPAPrompter() {
 
     // 1. NẾU ĐÃ KÍCH HOẠT CHROME EXTENSION: TỰ ĐỘNG CHUYỂN SANG TAB BÊN CẠNH VÀ GÕ
     if (document.documentElement.dataset.tuneTextExtension === "active") {
-        if (detectedExtensionVersion && !["1.0.9", "1.1.0", "1.2.0"].includes(detectedExtensionVersion)) {
+        if (detectedExtensionVersion && !["1.0.9", "1.1.0", "1.2.0", "1.2.1"].includes(detectedExtensionVersion)) {
             const modal = document.getElementById("extensionReloadModal");
             if (modal) {
                 modal.classList.remove("hidden");
                 return;
             } else {
-                alert(`⚠️ CẢNH BÁO QUAN TRỌNG:\n\nTiện ích Chrome của bạn đang ở bản cũ v${detectedExtensionVersion} (Bản mới nhất là v1.2.0).\n\n👉 VUI LÒNG LÀM 2 BƯỚC:\n1. Mở tab chrome://extensions bấm nút xoay tròn 🔄 để Tải lại Extension.\n2. F5 lại tab AI mục tiêu và tab này rồi bấm chạy lại!`);
+                alert(`⚠️ CẢNH BÁO QUAN TRỌNG:\n\nTiện ích Chrome của bạn đang ở bản cũ v${detectedExtensionVersion} (Bản mới nhất là v1.2.1).\n\n👉 VUI LÒNG LÀM 2 BƯỚC:\n1. Mở tab chrome://extensions bấm nút xoay tròn 🔄 để Tải lại Extension.\n2. F5 lại tab AI mục tiêu và tab này rồi bấm chạy lại!`);
                 return;
             }
         }
@@ -1387,6 +1450,8 @@ async function startRPAPrompter() {
                 platformCode: platformCode,
                 batchSize: batchSize,
                 batch_size: batchSize,
+                enablePrefixHeader: enablePrefixHeader,
+                specialCode: specialCode,
                 fileName: activeFileName,
                 folderName: activeFolderName,
                 inputSelector: customInput,
@@ -1425,6 +1490,16 @@ async function startRPAPrompter() {
             initLog.textContent = `[${new Date().toLocaleTimeString()}] 🚀 [Cài đặt Robot] Đã kích hoạt: ${loopLabel}${batchDesc} | Nghỉ ${delaySeconds}s mỗi lượt | ${promptsList.length} đoạn văn bản.`;
             logsBox.appendChild(initLog);
 
+            if (enablePrefixHeader) {
+                const prefixLog = document.createElement("div");
+                prefixLog.className = "text-amber-300 font-medium";
+                let previewCmd = `hãy tạo cho tôi ${batchSize} đợt 1`;
+                if (specialCode) previewCmd += ` ${specialCode}`;
+                previewCmd += ":";
+                prefixLog.textContent = `[${new Date().toLocaleTimeString()}] 🪄 [Câu mở đầu tự động]: Sẽ chèn "${previewCmd}" trước mỗi đợt gửi.`;
+                logsBox.appendChild(prefixLog);
+            }
+
             const folderLog = document.createElement("div");
             folderLog.className = "text-emerald-400 font-semibold";
             folderLog.textContent = `[${new Date().toLocaleTimeString()}] 📁 [Thư mục Video]: Đã kích hoạt thư mục '${activeFolderName}' (từ tệp '${activeFileName}') để sẵn sàng lưu video!`;
@@ -1445,6 +1520,8 @@ async function startRPAPrompter() {
                 split_mode: "paragraph",
                 platform_code: platformCode,
                 batch_size: batchSize,
+                enable_prefix_header: enablePrefixHeader,
+                special_code: specialCode,
                 custom_input_selector: customInput,
                 custom_send_selector: customSend,
                 custom_stop_selector: customStop,

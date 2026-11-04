@@ -454,6 +454,57 @@
     await new Promise(r => setTimeout(r, 2000));
   }
 
+  // 11. Tự động nhận diện và tải video sinh ra từ AI về thư mục tương ứng
+  function checkAndDownloadNewVideos(targetFolder, batchIndex, callerTabId) {
+    try {
+      if (!window.__ttDownloadedUrls) window.__ttDownloadedUrls = new Set();
+      const candidates = [];
+
+      // 1. Quét tất cả thẻ <video>
+      document.querySelectorAll("video").forEach(v => {
+        if (v.src && !v.src.startsWith("data:")) candidates.push(v.src);
+        v.querySelectorAll("source").forEach(s => {
+          if (s.src && !s.src.startsWith("data:")) candidates.push(s.src);
+        });
+      });
+
+      // 2. Quét thẻ <a> có download hoặc đuôi video
+      document.querySelectorAll("a[href*='.mp4'], a[href*='.webm'], a[download]").forEach(a => {
+        if (a.href && !a.href.startsWith("javascript:")) candidates.push(a.href);
+      });
+
+      // 3. Quét các thuộc tính đặc trưng của Muse.ai hoặc các AI Studio
+      document.querySelectorAll("[data-video-url], [data-video], [data-src*='.mp4'], [data-src*='.webm']").forEach(el => {
+        const u = el.getAttribute("data-video-url") || el.getAttribute("data-video") || el.getAttribute("data-src");
+        if (u) candidates.push(u);
+      });
+
+      let newFound = 0;
+      for (const rawUrl of candidates) {
+        if (!rawUrl) continue;
+        const cleanUrl = rawUrl.trim();
+        if ((cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://") || cleanUrl.startsWith("blob:")) && !window.__ttDownloadedUrls.has(cleanUrl)) {
+          window.__ttDownloadedUrls.add(cleanUrl);
+          newFound++;
+          const nowStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+          const ext = cleanUrl.includes(".webm") ? "webm" : "mp4";
+          const vName = `video_${targetFolder}_dot${batchIndex}_${nowStr}_${newFound}.${ext}`;
+
+          chrome.runtime.sendMessage({
+            action: "DOWNLOAD_AI_VIDEO",
+            videoUrl: cleanUrl,
+            folderName: targetFolder,
+            fileName: vName,
+            callerTabId: callerTabId
+          });
+          console.log(`[Tune-Text Video] Đã phát hiện video và tải vào '${targetFolder}/${vName}':`, cleanUrl);
+        }
+      }
+    } catch (e) {
+      console.warn("[Tune-Text AI] Lỗi kiểm tra video:", e);
+    }
+  }
+
   // Báo cáo tiến độ an toàn về tab Tune-Text (chống sinh lỗi unhandled promise khi tab F5)
   function safeReportProgress(callerTabId, data) {
     if (!callerTabId) return;
@@ -489,6 +540,8 @@
     const delayBetweenLoops = parseFloat(options.delaySeconds || options.delay_between_prompts) || 3;
     const totalPromptsPerLoop = prompts.length;
     const batchSize = Math.max(1, parseInt(options.batchSize || options.batch_size, 10) || 1);
+    const enablePrefixHeader = (options.enablePrefixHeader !== false);
+    const specialCode = (options.specialCode || "").trim();
 
     // Tạo danh sách các Lô (Batches) từ danh sách prompts
     const batches = [];
@@ -553,11 +606,23 @@
           ? `Lô ${currentBatchIndex}/${totalBatchesPerLoop} (${currentBatch.rangeLabel}/${totalPromptsPerLoop})`
           : `Đoạn ${currentBatchIndex}/${totalPromptsPerLoop}`;
 
+        // Ghép câu lệnh mở đầu tự động: "hãy tạo cho tôi [số lượng] đợt [thứ mấy] [mã đặc biệt]"
+        let promptToSend = currentBatch.combinedPrompt;
+        let prefixHeader = "";
+        if (enablePrefixHeader) {
+          prefixHeader = `hãy tạo cho tôi ${currentBatch.count} đợt ${currentBatchIndex}`;
+          if (specialCode) {
+            prefixHeader += ` ${specialCode}`;
+          }
+          prefixHeader += ":";
+          promptToSend = `${prefixHeader}\n\n${currentBatch.combinedPrompt}`;
+        }
+
         if (isTimeMode) {
           loopPrefix = `[Lượt ${currentLoop} ${getRemainingStr()}]`;
         }
 
-        updateHUD(`${loopPrefix} Đang chuẩn bị gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, currentBatch.combinedPrompt, false, currentLoop, loopCount, currentBatch.rangeLabel);
+        updateHUD(`${loopPrefix} Đang chuẩn bị gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptToSend, false, currentLoop, loopCount, currentBatch.rangeLabel);
 
         // Báo tiến độ về Tab Tune-Text an toàn
         safeReportProgress(callerTabId, {
@@ -571,7 +636,7 @@
           duration_minutes: durationMinutes,
           remaining_time_str: getRemainingStr(),
           status_message: `${loopPrefix} Đang gửi ${batchProgressStr} (Chạy ngầm)...`,
-          log: `[Tab AI] ${loopPrefix} Đang gửi ${batchProgressStr}: "${currentBatch.combinedPrompt.substring(0, 40)}..."`,
+          log: `[Tab AI] ${loopPrefix} Đang gửi ${batchProgressStr}${prefixHeader ? ` [Lệnh: "${prefixHeader}"]` : ''}: "${currentBatch.combinedPrompt.substring(0, 40)}..."`,
           is_completed: false
         });
 
@@ -594,38 +659,22 @@
           continue;
         }
 
-        // 2. Gõ và gửi đúng 1 lần duy nhất nội dung gộp của Lô
-        updateHUD(`${loopPrefix} Đang gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, currentBatch.combinedPrompt, false, currentLoop, loopCount, currentBatch.rangeLabel);
-        await sendSinglePrompt(inputBox, currentBatch.combinedPrompt, customSendSel, customInputSel);
+        // 2. Gõ và gửi đúng 1 lần duy nhất nội dung đã kèm câu mở đầu và mã đặc biệt
+        updateHUD(`${loopPrefix} Đang gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptToSend, false, currentLoop, loopCount, currentBatch.rangeLabel);
+        await sendSinglePrompt(inputBox, promptToSend, customSendSel, customInputSel);
         if (stopRequested) break;
 
         // 3. Chờ AI phản hồi xong hoàn toàn (Dựa trên nút Stop và độ ổn định text)
-        updateHUD(`${loopPrefix} ${batchProgressStr}: Đang chờ AI trả lời xong...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
+        updateHUD(`${loopPrefix} ${batchProgressStr}: Đang chờ AI xử lý và tạo hình ảnh/video...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
         await waitForAIFinish(180000, customStopSel);
 
         // 4. Tự động kiểm tra và tải Video về thư mục cùng tên tệp prompt nếu trang sinh ra video
         const targetVideoFolder = options.folderName || "prompts_video";
-        try {
-          const videoEls = Array.from(document.querySelectorAll("video, a[download], a[href*='.mp4']"));
-          if (!window.__ttDownloadedUrls) window.__ttDownloadedUrls = new Set();
-          for (const vel of videoEls) {
-            let vUrl = vel.src || (vel.querySelector("source") ? vel.querySelector("source").src : null) || vel.href;
-            if (vUrl && (vUrl.startsWith("http") || vUrl.startsWith("blob:")) && !window.__ttDownloadedUrls.has(vUrl)) {
-              window.__ttDownloadedUrls.add(vUrl);
-              const vName = `video_${targetVideoFolder}_lo${currentBatchIndex}_${Date.now()}.mp4`;
-              chrome.runtime.sendMessage({
-                action: "DOWNLOAD_AI_VIDEO",
-                videoUrl: vUrl,
-                folderName: targetVideoFolder,
-                fileName: vName,
-                callerTabId: callerTabId
-              });
-              break;
-            }
-          }
-        } catch (vidErr) {
-          console.warn("[Tune-Text AI] Lỗi kiểm tra video:", vidErr);
-        }
+        checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId);
+
+        // Kiểm tra tiếp sau 3 giây và 6 giây để bắt kịp video render bất đồng bộ
+        setTimeout(() => checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId), 3000);
+        setTimeout(() => checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId), 6000);
 
         // Báo hoàn thành lô này an toàn
         const isAllLoopsCompleted = (!isTimeMode && !isInfinite && currentLoop === loopCount && currentBatchIndex === totalBatchesPerLoop);
@@ -733,9 +782,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.2.0
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.2.1
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.2.0" });
+      sendResponse({ pong: true, version: "1.2.1" });
       return;
     }
 
@@ -744,17 +793,18 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.1.0) =====");
-      console.log("  request.targetUrl       =", request.targetUrl);
-      console.log("  request.platformCode    =", request.platformCode);
-      console.log("  request.loopCount       =", request.loopCount, typeof request.loopCount);
-      console.log("  request.isInfiniteLoop  =", request.isInfiniteLoop);
-      console.log("  request.durationMinutes =", request.durationMinutes);
-      console.log("  request.delaySeconds    =", request.delaySeconds);
-      console.log("  request.batchSize       =", request.batchSize);
-      console.log("  request.inputSelector   =", request.inputSelector);
-      console.log("  request.sendSelector    =", request.sendSelector);
-      console.log("  request.prompts.length  =", (request.prompts || []).length);
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.2.1) =====");
+      console.log("  request.targetUrl          =", request.targetUrl);
+      console.log("  request.platformCode       =", request.platformCode);
+      console.log("  request.loopCount          =", request.loopCount, typeof request.loopCount);
+      console.log("  request.isInfiniteLoop     =", request.isInfiniteLoop);
+      console.log("  request.durationMinutes    =", request.durationMinutes);
+      console.log("  request.delaySeconds       =", request.delaySeconds);
+      console.log("  request.batchSize          =", request.batchSize);
+      console.log("  request.enablePrefixHeader =", request.enablePrefixHeader);
+      console.log("  request.specialCode        =", request.specialCode);
+      console.log("  request.folderName         =", request.folderName);
+      console.log("  request.prompts.length     =", (request.prompts || []).length);
       console.log("==================================================");
 
       const opts = Object.assign({}, request.options || {});
@@ -769,6 +819,10 @@
       const parsedBatchSize = parseInt(rawBatchSize, 10);
       opts.batchSize = (parsedBatchSize && parsedBatchSize > 0) ? parsedBatchSize : 1;
       opts.batch_size = opts.batchSize;
+
+      opts.enablePrefixHeader = (request.enablePrefixHeader !== undefined) ? request.enablePrefixHeader : (opts.enablePrefixHeader !== undefined ? opts.enablePrefixHeader : true);
+      opts.specialCode = request.specialCode || opts.specialCode || "";
+      opts.folderName = request.folderName || opts.folderName || "prompts_video";
 
       opts.durationMinutes = parseFloat(request.durationMinutes || opts.durationMinutes) || 0;
       opts.delaySeconds = parseFloat(request.delaySeconds || opts.delaySeconds) || 3;

@@ -18,7 +18,7 @@
   // Đánh dấu để trang Web biết Extension đã sẵn sàng
   function notifyWebPage() {
     document.documentElement.dataset.tuneTextExtension = "active";
-    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.2.0" } }));
+    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.2.1" } }));
   }
 
   notifyWebPage();
@@ -44,6 +44,8 @@
     const delaySeconds = parseFloat(payload.delaySeconds || payload.delay_between_prompts) || 3;
     const stayInBackground = payload.stayInBackground !== false;
     const batchSize = parseInt(payload.batchSize || payload.batch_size, 10) || 1;
+    const enablePrefixHeader = payload.enablePrefixHeader !== false;
+    const specialCode = payload.specialCode || "";
 
     const jobOptions = {
       loopCount: loopCount,
@@ -57,6 +59,8 @@
       stayInBackground: stayInBackground,
       batchSize: batchSize,
       batch_size: batchSize,
+      enablePrefixHeader: enablePrefixHeader,
+      specialCode: specialCode,
       folderName: payload.folderName || "prompts_video",
       fileName: payload.fileName || "prompts.txt"
     };

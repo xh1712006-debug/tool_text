@@ -11,6 +11,8 @@ class StartRPARequest(BaseModel):
     loop_count: Optional[int] = Field(1, description="Số lần lặp lại chu kỳ gửi toàn bộ danh sách prompt")
     duration_minutes: Optional[float] = Field(0.0, description="Thời gian chạy tối đa tính bằng phút (0 = không giới hạn)")
     batch_size: Optional[int] = Field(1, description="Số lượng đoạn văn bản gộp gửi mỗi lần (Mặc định: 1)")
+    enable_prefix_header: Optional[bool] = Field(True, description="Tự động thêm câu lệnh mở đầu trước mỗi đợt gửi")
+    special_code: Optional[str] = Field("", description="Đoạn mã đặc biệt kèm theo trong câu mở đầu")
     platform_code: Optional[str] = Field("custom", description="Mã nền tảng (chatgpt, claude, gemini, deepseek, poe, custom...)")
     custom_input_selector: Optional[str] = Field(None, description="CSS selector tùy chỉnh cho ô nhập liệu")
     custom_send_selector: Optional[str] = Field(None, description="CSS selector tùy chỉnh cho nút gửi")

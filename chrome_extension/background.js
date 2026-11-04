@@ -1,5 +1,5 @@
-// Background Service Worker for Tune-Text AI Prompter (v1.2.0)
-console.log("[Tune-Text Extension] Service Worker khởi động (v1.2.0).");
+// Background Service Worker for Tune-Text AI Prompter (v1.2.1)
+console.log("[Tune-Text Extension] Service Worker khởi động (v1.2.1).");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Lệnh làm mới Tiện ích trực tiếp từ Web UI
@@ -24,6 +24,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const delaySeconds = parseFloat(rawData.delaySeconds || rawData.delay_between_prompts) || 3;
     const stayInBackground = rawData.stayInBackground !== false;
     const batchSize = parseInt(rawData.batchSize || rawData.batch_size, 10) || 1;
+    const enablePrefixHeader = rawData.enablePrefixHeader !== false;
+    const specialCode = rawData.specialCode || "";
 
     const runOptions = {
       loopCount: loopCount,
@@ -37,6 +39,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       stayInBackground: stayInBackground,
       batchSize: batchSize,
       batch_size: batchSize,
+      enablePrefixHeader: enablePrefixHeader,
+      specialCode: specialCode,
       folderName: rawData.folderName || "prompts_video",
       fileName: rawData.fileName || "prompts.txt",
       inputSelector: rawData.inputSelector || rawData.customInput || null,
@@ -45,7 +49,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     };
 
     const cleanFolder = (rawData.folderName || rawData.fileName || "prompts_video").replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1EA0-\u1EF9 ]/g, "").trim() || "prompts_video";
-    console.log("[Tune-Text BG] Bắt đầu xử lý START_IN_ADJACENT_TAB:", { targetUrl, platformCode, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, batchSize, folderName: cleanFolder });
+    console.log("[Tune-Text BG] Bắt đầu xử lý START_IN_ADJACENT_TAB:", { targetUrl, platformCode, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, batchSize, enablePrefixHeader, specialCode, folderName: cleanFolder });
 
     // Lưu vào storage để content_ai.js luôn có thể truy xuất
     if (chrome.storage && chrome.storage.local) {
@@ -90,6 +94,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       prompts: prompts,
       batchSize: batchSize,
       batch_size: batchSize,
+      enablePrefixHeader: enablePrefixHeader,
+      specialCode: specialCode,
       loopCount: loopCount,
       loop_count: loopCount,
       isInfiniteLoop: isInfiniteLoop,

@@ -699,6 +699,43 @@
                             </span>
                         </div>
 
+                        <!-- Tự Động Thêm Câu Lệnh Mở Đầu & Đoạn Mã Đặc Biệt (Prefix Command) -->
+                        <div class="pt-3 border-t border-slate-800/80 space-y-2.5">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <label class="flex items-center gap-2 text-xs text-purple-300 font-semibold cursor-pointer">
+                                    <input type="checkbox" id="rpaEnablePrefixHeader" checked onchange="updateRPAPrefixPreview()"
+                                        class="rounded bg-slate-800 border-slate-700 text-purple-600 focus:ring-0">
+                                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                                    <span>Tự động chèn câu lệnh mở đầu: "hãy tạo cho tôi [số lượng] đợt [thứ mấy] [mã đặc biệt]"</span>
+                                </label>
+                                <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-medium">
+                                    Ghép lệnh AI tự động
+                                </span>
+                            </div>
+
+                            <div id="rpaPrefixConfigPanel" class="grid grid-cols-1 sm:grid-cols-12 gap-3 pl-6">
+                                <div class="sm:col-span-5 space-y-1">
+                                    <label class="block text-[11px] text-slate-400 font-medium">
+                                        Đoạn mã đặc biệt kèm theo (Tùy chọn)
+                                    </label>
+                                    <input type="text" id="rpaSpecialCode" placeholder="Ví dụ: --ar 16:9, mã tập phim, phong cách..."
+                                        oninput="updateRPAPrefixPreview()"
+                                        class="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-purple-400 font-mono placeholder:text-slate-600">
+                                </div>
+                                <div class="sm:col-span-7 flex flex-col justify-end">
+                                    <div class="p-2 rounded-xl bg-slate-950/80 border border-purple-500/30 text-xs">
+                                        <div class="text-[10px] text-slate-400 font-medium mb-0.5 flex items-center gap-1">
+                                            <i class="fa-solid fa-eye text-purple-400"></i>
+                                            <span>Xem trước câu mở đầu gửi vào AI:</span>
+                                        </div>
+                                        <div id="rpaPrefixPreviewText" class="text-xs text-amber-300 font-mono font-medium truncate">
+                                            hãy tạo cho tôi 1 đợt 1:
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Chế độ chạy ngầm hoàn toàn -->
                         <div
                             class="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
