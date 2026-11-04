@@ -12,6 +12,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return;
   }
 
+  // Lệnh dừng Robot hoàn toàn từ Web UI
+  if (request.action === "STOP_AUTOMATION") {
+    console.log("[Tune-Text BG] Nhận lệnh dừng Robot! Đang phát lệnh STOP_PROMPTS tới tất cả các tab...");
+    chrome.tabs.query({}, (allTabs) => {
+      (allTabs || []).forEach(t => {
+        try {
+          chrome.tabs.sendMessage(t.id, { action: "STOP_PROMPTS" }, () => {
+            if (chrome.runtime.lastError) { }
+          });
+        } catch (e) { }
+      });
+    });
+    sendResponse({ stopped: true });
+    return true;
+  }
+
   // 1. Nhận yêu cầu khởi chạy từ Tab Tune-Text
   if (request.action === "START_IN_ADJACENT_TAB") {
     const rawData = request.data || {};
@@ -150,11 +166,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           });
         };
 
-        // Kiểm tra xem tab AI đã có content script v1.2.0 chưa
-        const EXT_VER = "1.2.0";
+        // Kiểm tra xem tab AI đã sẵn sàng chưa (không reload tab làm mất phiên của người dùng)
         chrome.tabs.sendMessage(aiTab.id, { action: "PING" }, (pingRes) => {
-          if (chrome.runtime.lastError || !pingRes || pingRes.version !== EXT_VER) {
-            console.log(`[Tune-Text BG] Tab AI đang chạy bản cũ hoặc chưa sẵn sàng. Đang nạp mã v${EXT_VER}...`);
+          if (!chrome.runtime.lastError && pingRes && pingRes.pong) {
+            console.log("[Tune-Text BG] Tab AI đã có content script và phản hồi PING, gửi lệnh chạy ngay!");
+            sendRunMessage();
+          } else {
+            console.log("[Tune-Text BG] Tab AI chưa nạp script, đang nạp trực tiếp qua executeScript...");
             chrome.scripting.executeScript({
               target: { tabId: aiTab.id },
               files: ["content_ai.js"]
@@ -163,15 +181,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 target: { tabId: aiTab.id },
                 files: ["styles.css"]
               }).catch(() => { });
-            }).catch(() => {
-              console.log("[Tune-Text BG] Tải lại tab để nạp lại script mới...");
-              chrome.tabs.reload(aiTab.id);
-            }).finally(() => {
-              setTimeout(sendRunMessage, 1200);
+              setTimeout(sendRunMessage, 600);
+            }).catch((err) => {
+              console.warn("[Tune-Text BG] Không thể executeScript (thử gửi trực tiếp):", err);
+              setTimeout(sendRunMessage, 300);
             });
-          } else {
-            // Tab AI đã chạy bản mới nhất v1.1.0 -> Gửi lệnh chạy ngay!
-            sendRunMessage();
           }
         });
       };

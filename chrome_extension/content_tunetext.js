@@ -18,7 +18,7 @@
   // Đánh dấu để trang Web biết Extension đã sẵn sàng
   function notifyWebPage() {
     document.documentElement.dataset.tuneTextExtension = "active";
-    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.2.1" } }));
+    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.2.2" } }));
   }
 
   notifyWebPage();
@@ -29,6 +29,14 @@
   // Lắng nghe lệnh làm mới tiện ích từ trang Web
   window.addEventListener("TUNE_TEXT_RELOAD_EXTENSION", () => {
     chrome.runtime.sendMessage({ action: "RELOAD_EXTENSION" }, () => {
+      if (chrome.runtime.lastError) { }
+    });
+  });
+
+  // Lắng nghe lệnh dừng khẩn cấp từ trang Web
+  window.addEventListener("TUNE_TEXT_REQUEST_STOP", () => {
+    console.log("[Tune-Text Extension] Nhận yêu cầu DỪNG ROBOT từ Web!");
+    chrome.runtime.sendMessage({ action: "STOP_AUTOMATION" }, () => {
       if (chrome.runtime.lastError) { }
     });
   });

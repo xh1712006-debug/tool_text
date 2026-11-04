@@ -1463,13 +1463,13 @@ async function startRPAPrompter() {
 
     // 1. NẾU ĐÃ KÍCH HOẠT CHROME EXTENSION: TỰ ĐỘNG CHUYỂN SANG TAB BÊN CẠNH VÀ GÕ
     if (document.documentElement.dataset.tuneTextExtension === "active") {
-        if (detectedExtensionVersion && !["1.0.9", "1.1.0", "1.2.0", "1.2.1"].includes(detectedExtensionVersion)) {
+        if (detectedExtensionVersion && !["1.0.9", "1.1.0", "1.2.0", "1.2.1", "1.2.2"].includes(detectedExtensionVersion)) {
             const modal = document.getElementById("extensionReloadModal");
             if (modal) {
                 modal.classList.remove("hidden");
                 return;
             } else {
-                alert(`⚠️ CẢNH BÁO QUAN TRỌNG:\n\nTiện ích Chrome của bạn đang ở bản cũ v${detectedExtensionVersion} (Bản mới nhất là v1.2.1).\n\n👉 VUI LÒNG LÀM 2 BƯỚC:\n1. Mở tab chrome://extensions bấm nút xoay tròn 🔄 để Tải lại Extension.\n2. F5 lại tab AI mục tiêu và tab này rồi bấm chạy lại!`);
+                alert(`⚠️ CẢNH BÁO QUAN TRỌNG:\n\nTiện ích Chrome của bạn đang ở bản cũ v${detectedExtensionVersion} (Bản mới nhất là v1.2.2).\n\n👉 VUI LÒNG LÀM 2 BƯỚC:\n1. Mở tab chrome://extensions bấm nút xoay tròn 🔄 để Tải lại Extension.\n2. F5 lại tab AI mục tiêu và tab này rồi bấm chạy lại!`);
                 return;
             }
         }
@@ -1592,12 +1592,37 @@ async function startRPAPrompter() {
 }
 
 async function stopRPAPrompter() {
+    showToast("🛑 Đang dừng Robot ngay lập tức...", "info");
+
+    // 1. Gửi lệnh dừng khẩn cấp tới Chrome Extension (chạy trên tab bên cạnh)
+    window.dispatchEvent(new CustomEvent("TUNE_TEXT_REQUEST_STOP"));
+
+    // 2. Gửi lệnh dừng tới backend Selenium (nếu có)
     try {
         await fetchAPI("/rpa/stop", { method: "POST" });
-        showToast("Đã gửi yêu cầu dừng Robot.", "info");
-    } catch (err) {
-        showToast(err.message, "error");
+    } catch (err) { }
+
+    // 3. Cập nhật ngay lập tức giao diện người dùng
+    if (rpaPollInterval) {
+        clearInterval(rpaPollInterval);
+        rpaPollInterval = null;
     }
+
+    const statusText = document.getElementById("rpaStatusText");
+    if (statusText) {
+        statusText.textContent = "🛑 Robot đã dừng hoàn toàn. Bạn có thể bấm khởi chạy lại bất cứ lúc nào.";
+    }
+
+    const logsBox = document.getElementById("rpaLogsBox");
+    if (logsBox) {
+        const stopLog = document.createElement("div");
+        stopLog.className = "text-rose-400 font-bold";
+        stopLog.textContent = `[${new Date().toLocaleTimeString()}] 🛑 [Đã dừng hoàn toàn]: Bạn đã bấm Dừng Robot thành công. Mọi tiến trình đã ngừng hẳn.`;
+        logsBox.appendChild(stopLog);
+        logsBox.scrollTop = logsBox.scrollHeight;
+    }
+
+    showToast("🛑 Robot đã dừng hoàn toàn!", "success");
 }
 
 function startRPAPolling() {

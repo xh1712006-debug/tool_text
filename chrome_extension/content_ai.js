@@ -84,7 +84,7 @@
     }
   }
 
-  // 2. Tìm ô nhập văn bản theo ngữ nghĩa (Hỗ trợ 100% Claude, Gemini, ChatGPT, DeepSeek, Poe, Perplexity và AI tùy biến)
+  // 2. Tìm ô nhập văn bản theo ngữ nghĩa (Hỗ trợ 100% Muse.ai, Meta Lexical, Claude, Gemini, ChatGPT, DeepSeek, Poe, Perplexity...)
   function findAIInputBox(customSelector = "") {
     if (customSelector && typeof customSelector === "string") {
       try {
@@ -93,32 +93,52 @@
       } catch (e) { }
     }
 
+    // Nếu người dùng đã click chuột sẵn vào ô nhập liệu
+    if (document.activeElement && (
+      document.activeElement.tagName === "TEXTAREA" ||
+      document.activeElement.tagName === "INPUT" ||
+      document.activeElement.isContentEditable ||
+      document.activeElement.getAttribute("role") === "textbox"
+    )) {
+      return document.activeElement;
+    }
+
     const selectors = [
       "#prompt-textarea",
       "div#prompt-textarea",
+      "div[contenteditable='true'][data-lexical-editor='true']",
+      "div[data-lexical-editor='true']",
       "div[contenteditable='true'][data-placeholder]",
       "div[contenteditable='true'].ProseMirror",
       "div.ProseMirror[contenteditable='true']",
       "rich-textarea div[contenteditable='true']",
+      "div[role='textbox'][contenteditable='true']",
       "div[role='textbox']",
       "div[contenteditable='true']",
       "textarea#chat-input",
       "textarea[data-id]",
-      "textarea[placeholder*='Message']",
-      "textarea[placeholder*='nhắn']",
-      "textarea[placeholder*='Hỏi']",
-      "textarea[placeholder*='Ask']",
-      "textarea[placeholder*='chat']",
+      "textarea[placeholder*='prompt' i]",
+      "input[placeholder*='prompt' i]",
+      "textarea[placeholder*='describe' i]",
+      "input[placeholder*='describe' i]",
+      "textarea[placeholder*='message' i]",
+      "input[placeholder*='message' i]",
+      "textarea[placeholder*='nhắn' i]",
+      "textarea[placeholder*='Hỏi' i]",
+      "textarea[placeholder*='Ask' i]",
+      "textarea[placeholder*='chat' i]",
       "div.ql-editor",
-      "textarea",
-      "input[type='text']"
+      "textarea:not([disabled])",
+      "input[type='text']:not([disabled])"
     ];
 
     for (const s of selectors) {
       try {
-        const el = document.querySelector(s);
-        if (el && !el.disabled) {
-          return el;
+        const elements = document.querySelectorAll(s);
+        for (const el of elements) {
+          if (!el.disabled && el.offsetParent !== null) {
+            return el;
+          }
         }
       } catch (e) { }
     }
@@ -137,21 +157,24 @@
     const selectors = [
       "button[data-testid='send-button']",
       "button[data-testid='fruitjuice-send-button']",
-      "button[aria-label*='Send']",
-      "button[aria-label*='Gửi']",
-      "button[aria-label*='Submit']",
-      "button[aria-label*='prompt']",
+      "button[aria-label*='Send' i]",
+      "button[aria-label*='Gửi' i]",
+      "button[aria-label*='Submit' i]",
+      "button[aria-label*='prompt' i]",
+      "button[data-testid*='send' i]",
       "button.send-button",
       "button.ds-icon-button",
-      "div[role='button'][aria-label*='Send']",
+      "div[role='button'][aria-label*='Send' i]",
       "button[type='submit']"
     ];
 
     for (const s of selectors) {
       try {
-        const btn = document.querySelector(s);
-        if (btn) {
-          return btn;
+        const elements = document.querySelectorAll(s);
+        for (const btn of elements) {
+          if (btn && btn.offsetParent !== null) {
+            return btn;
+          }
         }
       } catch (e) { }
     }
@@ -163,15 +186,14 @@
     if (customSelector && typeof customSelector === "string") {
       try {
         const customBtn = document.querySelector(customSelector.trim());
-        if (customBtn) return customBtn;
+        if (customBtn && customBtn.offsetParent !== null) return customBtn;
       } catch (e) { }
     }
 
     const selectors = [
-      "button[data-testid='stop-button']",
-      "button[aria-label*='Stop']",
-      "button[aria-label*='Dừng']",
-      "button[aria-label*='Cancel']",
+      "button[data-testid='stop-button']:not([disabled])",
+      "button[aria-label='Stop generating']:not([disabled])",
+      "button[aria-label='Stop streaming']:not([disabled])",
       ".result-streaming",
       ".ds-button--stop"
     ];
@@ -179,7 +201,7 @@
     for (const s of selectors) {
       try {
         const btn = document.querySelector(s);
-        if (btn) {
+        if (btn && btn.offsetParent !== null) {
           return btn;
         }
       } catch (e) { }
@@ -187,24 +209,21 @@
     return null;
   }
 
-  // 5. Kiểm tra AI có đang trong trạng thái bận sinh câu trả lời không
+  // 5. Kiểm tra AI có đang trong trạng thái bận sinh câu trả lời không (Chính xác, chống kẹt nhầm nút Cancel)
   function isAIGenerating(customStopSelector = "") {
     if (findStopButton(customStopSelector)) return true;
 
     const streamingSelectors = [
       ".result-streaming",
       "[data-is-streaming='true']",
-      "div.pulsing",
       ".sparkle-streaming",
-      "button[aria-label*='Stop']",
-      "button[aria-label*='Dừng']",
-      "button[aria-label*='Ngừng']",
-      "button[aria-label*='Cancel']"
+      ".ds-button--stop"
     ];
 
     for (const s of streamingSelectors) {
       try {
-        if (document.querySelector(s)) return true;
+        const el = document.querySelector(s);
+        if (el && el.offsetParent !== null) return true;
       } catch (e) { }
     }
     return false;
@@ -247,26 +266,26 @@
       .replace(/'/g, "&#039;");
   }
 
-  // 7. Chờ AI rảnh hoàn toàn và ô nhập sẵn sàng nhận văn bản
-  async function waitForAIReady(customInputSelector = "", maxWaitMs = 60000) {
+  // 7. Chờ AI rảnh và ô nhập sẵn sàng (Tối đa 5s, không bao giờ treo vô hạn)
+  async function waitForAIReady(customInputSelector = "", maxWaitMs = 5000) {
     const start = Date.now();
     while (isAIGenerating() && (Date.now() - start < maxWaitMs)) {
       if (stopRequested) return null;
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 400));
     }
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 15; i++) {
       if (stopRequested) return null;
       const el = findAIInputBox(customInputSelector);
       if (el && !el.disabled && el.getAttribute("contenteditable") !== "false") {
         return el;
       }
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 200));
     }
     return findAIInputBox(customInputSelector);
   }
 
-  // 8. Gõ văn bản vào ô nhập (Hỗ trợ 100% cả tab ngầm, đa nền tảng và gộp nhiều đoạn prompt)
+  // 8. Gõ văn bản vào ô nhập (Hỗ trợ 100% React, Meta Lexical Muse.ai, ProseMirror ChatGPT, Claude, Gemini...)
   async function typeTextIntoInput(el, text) {
     if (!el || !text) return;
     try { el.focus(); } catch (e) { }
@@ -274,70 +293,60 @@
     const isTextarea = el.tagName.toLowerCase() === "textarea" || el.tagName.toLowerCase() === "input";
 
     if (isTextarea) {
-      el.value = text;
+      try {
+        const proto = el.tagName.toLowerCase() === "textarea" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+        const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+        if (nativeSetter) {
+          nativeSetter.call(el, text);
+        } else {
+          el.value = text;
+        }
+      } catch (err) {
+        el.value = text;
+      }
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
       return;
     }
 
-    // Với ContentEditable (ChatGPT, Claude, Gemini, DeepSeek, ProseMirror...):
-    // Phân tách các đoạn prompt để giữ nguyên vẹn cấu trúc đa đoạn
-    const paragraphs = text.split(/\n\s*\n+/).map(p => p.trim()).filter(p => p.length > 0);
-    const htmlParagraphs = paragraphs.map(p => `<p>${escapeHTML(p).replace(/\n/g, "<br>")}</p>`).join("");
-
-    let successInserted = false;
-
-    // BƯỚC 1: Sử dụng ClipboardEvent("paste") chuẩn HTML + PlainText (Cách tốt nhất cho ProseMirror giữ trọn các đoạn)
+    // Với ContentEditable (Lexical Muse.ai, ProseMirror ChatGPT, Claude, Gemini...):
     try {
+      el.focus();
       const sel = window.getSelection();
       const range = document.createRange();
       range.selectNodeContents(el);
       sel.removeAllRanges();
       sel.addRange(range);
-
-      const dt = new DataTransfer();
-      dt.setData("text/plain", text);
-      dt.setData("text/html", htmlParagraphs);
-
-      const pasteEvt = new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: dt
-      });
-      el.dispatchEvent(pasteEvt);
-
-      // Kiểm tra xem ô chat đã nhận đủ nội dung hay chưa
-      const insertedLen = (el.textContent || el.innerText || "").trim().length;
-      if (insertedLen >= Math.min(text.trim().length * 0.7, 40)) {
-        successInserted = true;
-      }
     } catch (e) { }
 
-    // BƯỚC 2: Nếu chưa nhận đủ (ví dụ tab nền không hỗ trợ paste hoặc paste bị cắt ngắn), chèn trực tiếp các thẻ <p>
-    if (!successInserted || (el.textContent || "").trim() === "") {
+    // Thử dùng insertText (Chuẩn cho Lexical của Meta/Muse và ProseMirror)
+    let insertSuccess = false;
+    try {
+      insertSuccess = document.execCommand("insertText", false, text);
+    } catch (e) { }
+
+    // Nếu chưa nhận đủ, dùng ClipboardEvent paste
+    const currentLen = (el.textContent || el.innerText || "").trim().length;
+    if (!insertSuccess || currentLen < Math.min(text.trim().length * 0.7, 40)) {
       try {
-        el.innerHTML = "";
-        paragraphs.forEach(para => {
-          const p = document.createElement("p");
-          p.textContent = para;
-          el.appendChild(p);
+        const dt = new DataTransfer();
+        dt.setData("text/plain", text);
+        const pasteEvt = new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: dt
         });
-        el.dispatchEvent(new InputEvent("beforeinput", {
-          bubbles: true,
-          cancelable: true,
-          inputType: "insertFromPaste",
-          data: text
-        }));
-        el.dispatchEvent(new InputEvent("input", {
-          bubbles: true,
-          cancelable: true,
-          inputType: "insertFromPaste",
-          data: text
-        }));
+        el.dispatchEvent(pasteEvt);
       } catch (e) { }
     }
 
-    // Phát sự kiện input và change
+    if ((el.textContent || el.innerText || "").trim() === "") {
+      try {
+        el.innerText = text;
+      } catch (e) { }
+    }
+
+    el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
@@ -367,34 +376,34 @@
       await new Promise(r => setTimeout(r, 100));
     }
 
+    function triggerEnter(el) {
+      ["keydown", "keypress", "keyup"].forEach(type => {
+        try {
+          el.dispatchEvent(new KeyboardEvent(type, {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true
+          }));
+        } catch (e) { }
+      });
+      if (el.form) {
+        try { el.form.requestSubmit(); } catch (e) { }
+      }
+    }
+
     if (sendBtn) {
       try {
         sendBtn.removeAttribute("disabled");
         sendBtn.disabled = false;
         sendBtn.click();
       } catch (e) {
-        // Dự phòng nếu click nút lỗi mới dùng Enter
-        try {
-          inputBox.dispatchEvent(new KeyboardEvent("keydown", {
-            key: "Enter",
-            code: "Enter",
-            keyCode: 13,
-            which: 13,
-            bubbles: true
-          }));
-        } catch (err) { }
+        triggerEnter(inputBox);
       }
     } else {
-      // Nếu trang AI không có nút gửi riêng (chỉ dùng phím Enter)
-      try {
-        inputBox.dispatchEvent(new KeyboardEvent("keydown", {
-          key: "Enter",
-          code: "Enter",
-          keyCode: 13,
-          which: 13,
-          bubbles: true
-        }));
-      } catch (e) { }
+      triggerEnter(inputBox);
     }
     return true;
   }
@@ -669,6 +678,13 @@
         let inputBox = await waitForAIReady(customInputSel);
 
         if (!inputBox) {
+          safeReportProgress(callerTabId, {
+            current_index: currentBatchIndex,
+            total_prompts: totalBatchesPerLoop,
+            status_message: `⚠️ Đang tìm ô chat trên tab AI cho ${batchProgressStr}...`,
+            log: `[Lưu ý] Đang tìm ô nhập prompt trên tab AI (${currentBatch.rangeLabel}). Hãy đảm bảo tab AI đang mở khung chat (hoặc click chuột vào ô nhập liệu)!`,
+            is_completed: false
+          });
           console.warn("Chưa tìm thấy ô nhập liệu, thử lại sau 2 giây...");
           await new Promise(r => setTimeout(r, 2000));
           inputBox = findAIInputBox(customInputSel);
@@ -676,6 +692,13 @@
 
         if (!inputBox) {
           console.error("Không tìm thấy ô nhập liệu.");
+          safeReportProgress(callerTabId, {
+            current_index: currentBatchIndex,
+            total_prompts: totalBatchesPerLoop,
+            status_message: `❌ Chưa tìm thấy ô nhập liệu trên tab AI!`,
+            log: `[Lỗi] Không tìm thấy ô nhập prompt trên tab AI cho ${batchProgressStr}. Vui lòng mở tab AI và click chuột vào ô chat, rồi bấm Khởi Chạy lại!`,
+            is_completed: false
+          });
           continue;
         }
 
@@ -802,13 +825,27 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.2.1
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.2.2
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.2.1" });
+      sendResponse({ pong: true, version: "1.2.2" });
       return;
     }
 
-    // 2. Nhận lệnh chạy chuỗi Prompt
+    // 2. Nhận lệnh DỪNG KHẨN CẤP từ Web UI
+    if (request.action === "STOP_PROMPTS") {
+      console.log("[Tune-Text Content AI] Đã nhận lệnh STOP_PROMPTS, dừng ngay lập tức!");
+      stopRequested = true;
+      isAutomationRunning = false;
+      updateHUD("🛑 Đã dừng Robot theo yêu cầu!", 0, 0, "", true);
+      setTimeout(() => {
+        const hud = document.getElementById("tune-text-hud");
+        if (hud) hud.style.display = "none";
+      }, 2500);
+      sendResponse({ stopped: true });
+      return true;
+    }
+
+    // 3. Nhận lệnh chạy chuỗi Prompt
     if (request.action === "RUN_PROMPTS") {
       sendResponse({ started: true });
 
