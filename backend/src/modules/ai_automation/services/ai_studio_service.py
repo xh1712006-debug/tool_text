@@ -124,7 +124,14 @@ class AIStudioService:
             if res.status_code == 524:
                 raise Exception("Lỗi 524 Timeout từ Cloudflare: Model AI đang được tải vào GPU lần đầu. Vui lòng đợi Colab nạp xong model!")
             if res.status_code != 200:
-                raise Exception(f"Worker trả về lỗi {res.status_code}: {res.text[:200]}")
+                err_msg = res.text[:200]
+                try:
+                    err_json = res.json()
+                    if isinstance(err_json, dict) and "detail" in err_json:
+                        err_msg = err_json["detail"]
+                except:
+                    pass
+                raise Exception(f"Worker báo lỗi ({res.status_code}): {err_msg}")
             return res.json()
 
     @classmethod
@@ -155,7 +162,14 @@ class AIStudioService:
             if res.status_code == 502:
                 raise Exception("Lỗi 502 Bad Gateway từ Cloudflare: Server Python trên Colab chưa chạy hoặc bị tắt.")
             if res.status_code != 200:
-                raise Exception(f"Worker trả về lỗi {res.status_code}: {res.text[:200]}")
+                err_msg = res.text[:200]
+                try:
+                    err_json = res.json()
+                    if isinstance(err_json, dict) and "detail" in err_json:
+                        err_msg = err_json["detail"]
+                except:
+                    pass
+                raise Exception(f"Worker báo lỗi ({res.status_code}): {err_msg}")
             return res.json()
 
     @classmethod
