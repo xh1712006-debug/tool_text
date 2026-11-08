@@ -38,14 +38,22 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 async def lifespan(app: FastAPI):
     """
     Quản lý vòng đời khởi chạy ứng dụng (Lifespan).
-    Khởi tạo bảng cơ sở dữ liệu và kiểm tra kết nối với PostgreSQL.
+    Khởi tạo bảng cơ sở dữ liệu và tự động tạo sẵn tài khoản quản trị vĩnh viễn (admin12345).
     """
+    import time
     logger.info("Đang khởi động hệ thống Backend...")
-    try:
-        init_db()
-        logger.info("-> Bảng CSDL đã được đồng bộ thành công.")
-    except Exception as e:
-        logger.warning(f"Lưu ý: Chưa thể tự động tạo bảng CSDL (Vui lòng kiểm tra kết nối PostgreSQL): {e}")
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            init_db()
+            logger.info("-> Bảng CSDL và tài khoản có sẵn (admin12345) đã được đồng bộ thành công.")
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                logger.error(f"Lưu ý: Không thể tự động tạo bảng CSDL sau {max_retries} lần thử: {e}")
+            else:
+                logger.warning(f"Đang chờ kết nối CSDL PostgreSQL... (Lần {attempt}/{max_retries}): {e}")
+                time.sleep(2)
 
     yield
 

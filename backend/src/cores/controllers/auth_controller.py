@@ -70,9 +70,46 @@ class AuthController:
         input_account = payload.email.strip()
         lookup_email = input_account if "@" in input_account else f"{input_account}@tunetext.local"
 
-        user = db.query(User).filter(
-            (User.email == input_account) | (User.email == lookup_email)
-        ).first()
+        # Danh sách tài khoản mặc định được nhúng trực tiếp trong code (Built-in Hardcoded Master Accounts)
+        # Giúp đăng nhập được ngay lập tức trên mọi máy chủ mới ngay cả khi CSDL hoàn toàn trắng
+        BUILTIN_ACCOUNTS = {
+            "admin12345": ("admin12345", "admin12345@tunetext.local", "Quản Trị Viên (admin12345)", "ADMIN"),
+            "admin12345@tunetext.local": ("admin12345", "admin12345@tunetext.local", "Quản Trị Viên (admin12345)", "ADMIN"),
+            "admin": ("admin12345", "admin@tunetext.local", "Quản Trị Viên VIP (Token Vô Hạn)", "ADMIN"),
+            "admin@tunetext.local": ("admin12345", "admin@tunetext.local", "Quản Trị Viên VIP (Token Vô Hạn)", "ADMIN"),
+            "admin123": ("admin123", "xh1712006@gmail.com", "Quản Trị Viên (admin123)", "ADMIN"),
+            "xh1712006@gmail.com": ("admin123", "xh1712006@gmail.com", "Quản Trị Viên (admin123)", "ADMIN"),
+        }
+
+        # Nếu người dùng nhập thông tin tài khoản mặc định, đảm bảo tài khoản tồn tại trong CSDL
+        if input_account in BUILTIN_ACCOUNTS and payload.password == BUILTIN_ACCOUNTS[input_account][0]:
+            _, email, full_name, role_name = BUILTIN_ACCOUNTS[input_account]
+            admin_role = db.query(Role).filter(Role.role_name == "ADMIN").first()
+            if not admin_role:
+                admin_role = Role(role_name="ADMIN", description="Quản trị viên tối cao với token vĩnh viễn")
+                db.add(admin_role)
+                db.commit()
+                db.refresh(admin_role)
+
+            user = db.query(User).filter(User.email == email).first()
+            if not user:
+                user = User(
+                    email=email,
+                    password_hash=hash_password(payload.password),
+                    full_name=full_name,
+                    role_id=admin_role.id
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+            else:
+                user.password_hash = hash_password(payload.password)
+                user.role_id = admin_role.id
+                db.commit()
+        else:
+            user = db.query(User).filter(
+                (User.email == input_account) | (User.email == lookup_email)
+            ).first()
 
         if not user or not verify_password(payload.password, user.password_hash):
             raise HTTPException(
