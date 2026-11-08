@@ -2157,7 +2157,16 @@ async function pollStudioStatus() {
 async function stopStudioBatch() {
     try {
         const res = await fetchAPI("/rpa/ai-studio/batch/stop", { method: "POST" });
-        showToast(res.message || "Đã gửi tín hiệu dừng AI Studio.", "info");
+        showToast(res.message || "Đã gửi tín hiệu dừng khẩn cấp AI Studio.", "warning");
+        if (studioPollTimer) {
+            clearInterval(studioPollTimer);
+            studioPollTimer = null;
+        }
+        isStudioRunning = false;
+        const textEl = document.getElementById("studioStatusText");
+        if (textEl) {
+            textEl.textContent = "🛑 Đã dừng tiến trình AI Studio theo yêu cầu của bạn!";
+        }
     } catch (err) {
         showToast(`Lỗi dừng tiến trình: ${err.message}`, "error");
     }

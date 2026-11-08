@@ -1065,12 +1065,18 @@
 
                 <!-- Bảng Theo Dõi Tiến Độ Thời Gian Thực (Live Studio Monitor) -->
                 <div id="studioStatusCard" class="hidden mt-8 p-6 rounded-2xl bg-slate-950/90 border border-amber-500/30 space-y-4">
-                    <div class="flex items-center justify-between">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div class="flex items-center gap-2">
                             <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
                             <span id="studioStatusText" class="text-sm font-semibold text-white">Đang khởi tạo AI Studio...</span>
                         </div>
-                        <span id="studioProgressCount" class="text-xs font-mono px-3 py-1 rounded-lg bg-slate-800 text-amber-300">0 / 0</span>
+                        <div class="flex items-center gap-2.5">
+                            <button type="button" onclick="stopStudioBatch()" title="Dừng khẩn cấp tiến trình đang chạy"
+                                class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-600/30 flex items-center gap-1.5 transition">
+                                <i class="fa-solid fa-hand"></i> <span>Dừng Khẩn Cấp</span>
+                            </button>
+                            <span id="studioProgressCount" class="text-xs font-mono px-3 py-1 rounded-lg bg-slate-800 text-amber-300">0 / 0</span>
+                        </div>
                     </div>
 
                     <!-- Thanh Tiến Độ -->

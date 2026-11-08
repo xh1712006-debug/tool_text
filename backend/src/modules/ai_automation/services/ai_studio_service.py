@@ -105,7 +105,9 @@ class AIStudioService:
     ) -> Dict[str, Any]:
         """Gửi yêu cầu tạo ảnh đơn lẻ đến Cloud Worker."""
         clean_url = worker_url.strip().rstrip("/")
-        async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as client:
+        # Thiết lập timeout dài (30 phút) để không bao giờ bị ngắt kết nối giữa chừng
+        timeout_cfg = httpx.Timeout(1800.0, connect=60.0)
+        async with httpx.AsyncClient(timeout=timeout_cfg, follow_redirects=True) as client:
             payload = {
                 "prompt": prompt,
                 "negative_prompt": negative_prompt,
@@ -131,12 +133,14 @@ class AIStudioService:
         worker_url: str,
         image_base64: str,
         prompt: str = "",
-        num_frames: int = 25,
-        fps: int = 8
+        num_frames: int = 14,
+        fps: int = 7
     ) -> Dict[str, Any]:
         """Gửi ảnh để tạo video chuyển động MP4."""
         clean_url = worker_url.strip().rstrip("/")
-        async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
+        # Thiết lập timeout dài (30 phút) để không bao giờ bị ngắt kết nối giữa chừng
+        timeout_cfg = httpx.Timeout(1800.0, connect=60.0)
+        async with httpx.AsyncClient(timeout=timeout_cfg, follow_redirects=True) as client:
             payload = {
                 "image_base64": image_base64,
                 "prompt": prompt,
