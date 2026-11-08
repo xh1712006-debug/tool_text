@@ -237,6 +237,7 @@ class AIStudioService:
         target_dir = os.path.join(DOWNLOADS_DIR, folder_name)
 
         try:
+            consecutive_errors = 0
             for idx, prompt_text in enumerate(prompts):
                 if cls._batch_state["stop_requested"]:
                     cls._log(f"🛑 Người dùng đã bấm dừng tiến trình.")
@@ -267,10 +268,15 @@ class AIStudioService:
                         img_url = f"/downloads/{folder_name}/{img_filename}?t={int(time.time())}"
                         cls._batch_state["current_image_url"] = img_url
                         cls._log(f"✅ {prefix_log} Đã vẽ xong hình ảnh: {img_filename}")
+                        consecutive_errors = 0
                     else:
                         cls._log(f"⚠️ {prefix_log} Không nhận được dữ liệu ảnh từ Cloud Worker.")
                 except Exception as img_err:
                     cls._log(f"❌ {prefix_log} Lỗi tạo ảnh: {str(img_err)}")
+                    consecutive_errors += 1
+                    if consecutive_errors >= 3:
+                        cls._log("🛑 Đã tự động dừng tiến trình do mất kết nối tới Cloudflare Tunnel (Lỗi 530/502). Vui lòng kiểm tra lại URL Colab!")
+                        break
                     continue
 
                 if cls._batch_state["stop_requested"]:
