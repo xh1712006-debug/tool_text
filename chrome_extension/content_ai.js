@@ -209,15 +209,22 @@
     return null;
   }
 
-  // 5. Kiểm tra AI có đang trong trạng thái bận sinh câu trả lời không (Chính xác, chống kẹt nhầm nút Cancel)
+  // 5. Kiểm tra AI có đang trong trạng thái bận sinh câu trả lời, ảnh hoặc video không
   function isAIGenerating(customStopSelector = "") {
     if (findStopButton(customStopSelector)) return true;
 
+    // 1. Selector streaming, spinner và loading indicator
     const streamingSelectors = [
       ".result-streaming",
       "[data-is-streaming='true']",
       ".sparkle-streaming",
-      ".ds-button--stop"
+      ".ds-button--stop",
+      "[class*='typing-indicator']",
+      "[class*='loading-dots']",
+      "[class*='dot-flashing']",
+      "svg.animate-spin",
+      "[data-state='loading']",
+      "[aria-busy='true']"
     ];
 
     for (const s of streamingSelectors) {
@@ -226,6 +233,32 @@
         if (el && el.offsetParent !== null) return true;
       } catch (e) { }
     }
+
+    // 2. Nhận diện các từ khóa trạng thái đặc thù của Muse.ai khi đang tạo ảnh, collage, video
+    try {
+      const allStatusEls = document.querySelectorAll("div, span, p");
+      for (let i = allStatusEls.length - 1; i >= Math.max(0, allStatusEls.length - 100); i--) {
+        const el = allStatusEls[i];
+        if (el && el.children.length === 0) {
+          const txt = (el.textContent || "").trim();
+          if (
+            txt === "Creating collage" ||
+            txt === "Creating image" ||
+            txt === "Creating video" ||
+            txt === "Rendering video" ||
+            txt === "Generating..." ||
+            txt === "Creating..." ||
+            txt.startsWith("Creating collage") ||
+            txt.startsWith("Creating image") ||
+            txt.startsWith("Creating video") ||
+            txt.startsWith("Rendering")
+          ) {
+            if (el.offsetParent !== null) return true;
+          }
+        }
+      }
+    } catch (e) { }
+
     return false;
   }
 
@@ -319,39 +352,27 @@
       sel.addRange(range);
     } catch (e) { }
 
-    // Phương pháp 1: Dùng ClipboardEvent paste (Phương pháp chuẩn và tối ưu nhất cho Lexical & ProseMirror khi có ký tự xuống dòng)
-    let pasteWorked = false;
+    // Thử dùng insertText (Chuẩn cho Lexical của Meta/Muse và ProseMirror)
+    let insertSuccess = false;
     try {
-      const dt = new DataTransfer();
-      dt.setData("text/plain", text);
-      const pasteEvt = new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: dt
-      });
-      el.dispatchEvent(pasteEvt);
-      const lenNow = (el.textContent || el.innerText || "").trim().length;
-      if (lenNow >= Math.min(text.trim().length * 0.7, 30)) {
-        pasteWorked = true;
-      }
+      insertSuccess = document.execCommand("insertText", false, text);
     } catch (e) { }
 
-    // Phương pháp 2: Nếu paste chưa nhận hoặc bị chặn, chia theo dòng và dùng insertText + insertParagraph
-    if (!pasteWorked) {
+    // Nếu chưa nhận đủ, dùng ClipboardEvent paste
+    const currentLen = (el.textContent || el.innerText || "").trim().length;
+    if (!insertSuccess || currentLen < Math.min(text.trim().length * 0.7, 40)) {
       try {
-        const lines = text.split("\n");
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].length > 0) {
-            document.execCommand("insertText", false, lines[i]);
-          }
-          if (i < lines.length - 1) {
-            document.execCommand("insertParagraph", false, null);
-          }
-        }
+        const dt = new DataTransfer();
+        dt.setData("text/plain", text);
+        const pasteEvt = new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: dt
+        });
+        el.dispatchEvent(pasteEvt);
       } catch (e) { }
     }
 
-    // Phương pháp 3: Fallback cuối cùng nếu vẫn trống
     if ((el.textContent || el.innerText || "").trim() === "") {
       try {
         el.innerText = text;
@@ -421,58 +442,43 @@
   }
 
   // 10. Chờ AI phản hồi xong hoàn toàn (Dựa trên cả nút Stop và độ ổn định văn bản)
-  async function waitForAIFinish(maxWaitMs = 180000, customStopSelector = "") {
+  // 10. Chờ AI phản hồi xong hoàn toàn (Hỗ trợ cả văn bản, sinh hình ảnh và tạo video)
+  async function waitForAIFinish(maxWaitMs = 300000, customStopSelector = "") {
     const start = Date.now();
     let isGenerating = false;
 
-    // Bước A: Chờ tối đa 12 giây để AI bắt đầu xuất chữ (nút Stop hoặc streaming xuất hiện)
-    let lastBodyLen = 0;
-    try { lastBodyLen = document.body.innerText.length; } catch (e) { }
-
-    for (let i = 0; i < 24; i++) {
+    // Bước A: Chờ tối đa 15 giây để AI BẮT ĐẦU xử lý (tránh trường hợp mạng lag chưa kịp hiện spinner / 'Creating collage')
+    for (let i = 0; i < 30; i++) {
       if (stopRequested) return;
       if (isAIGenerating(customStopSelector)) {
         isGenerating = true;
         break;
       }
-      try {
-        const curLen = document.body.innerText.length;
-        if (curLen > lastBodyLen + 15) {
-          isGenerating = true;
-          break;
-        }
-      } catch (e) { }
       await new Promise(r => setTimeout(r, 500));
     }
 
-    // Bước B: Chờ AI sinh xong toàn bộ (nút Stop biến mất VÀ độ dài text ổn định trong 3 chu kỳ liên tiếp)
+    // Bước B: Chờ cho tới khi AI sinh xong toàn bộ (không còn 'Creating collage', spinner, Stop button)
     let stableCount = 0;
-    let prevTextLen = 0;
-
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return;
 
       const generatingNow = isAIGenerating(customStopSelector);
-      let curTextLen = 0;
-      try { curTextLen = document.body.innerText.length; } catch (e) { }
-
-      if (generatingNow || (curTextLen !== prevTextLen && curTextLen > 0)) {
+      if (generatingNow) {
         stableCount = 0;
-        prevTextLen = curTextLen;
-        await new Promise(r => setTimeout(r, 800));
+        await new Promise(r => setTimeout(r, 1000));
         continue;
       }
 
       stableCount++;
       if (stableCount >= 3) {
-        // Text đã ổn định 2.4s liên tiếp và không còn Stop button -> Hoàn tất!
+        // Đã không còn bất kỳ spinner, loader hay trạng thái 'Creating...' trong 3 giây liên tiếp!
         break;
       }
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 1000));
     }
 
-    // Đệm thêm 2 giây để giao diện ổn định và ô chat mở khóa trở lại
-    await new Promise(r => setTimeout(r, 2000));
+    // Đệm thêm 3 giây để hình ảnh/video render hoàn tất và ô chat mở khóa trở lại
+    await new Promise(r => setTimeout(r, 3000));
   }
 
   // 11. Tự động nhận diện và tải video sinh ra từ AI về thư mục tương ứng (video1, video2, video3...)
@@ -651,7 +657,7 @@
         }
 
         // ==============================================================
-        // BƯỚC 1: GỬI ĐOẠN VĂN BẢN TỰ ĐỘNG (PROMPT NỘI DUNG TỪ DANH SÁCH)
+        // BƯỚC 1: GỬI ĐOẠN VĂN BẢN (PROMPT CHÍNH) ➔ CHỜ TẠO HÌNH ẢNH XONG
         // ==============================================================
         const promptText = currentBatch.combinedPrompt;
         updateHUD(`${loopPrefix} [1/2] Đang chuẩn bị gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptText, false, currentLoop, loopCount, currentBatch.rangeLabel);
@@ -690,18 +696,33 @@
           continue;
         }
 
-        // 1b. Gõ đúng và đủ toàn bộ nội dung đoạn văn bản
+        // 1b. Gõ toàn bộ nội dung đoạn văn bản và gửi đi
         updateHUD(`${loopPrefix} [1/2] Đang gõ ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptText, false, currentLoop, loopCount, currentBatch.rangeLabel);
         await sendSinglePrompt(inputBox, promptText, customSendSel, customInputSel);
         if (stopRequested) break;
 
-        // 1c. Chờ AI phản hồi xong đoạn văn bản (Ví dụ: sinh hình ảnh đầu tiên)
-        updateHUD(`${loopPrefix} [1/2] ${batchProgressStr}: Đang chờ AI phản hồi...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
-        await waitForAIFinish(180000, customStopSel);
+        // 1c. Chờ AI tạo xong HÌNH ẢNH / COLLAGE hoàn toàn trước khi làm bước tiếp theo
+        updateHUD(`${loopPrefix} [1/2] ${batchProgressStr}: Đang chờ AI tạo xong hình ảnh...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
+        safeReportProgress(callerTabId, {
+          current_index: currentBatchIndex,
+          total_prompts: totalBatchesPerLoop,
+          status_message: `${loopPrefix} Đang chờ AI tạo xong hình ảnh...`,
+          log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI tạo xong hình ảnh cho ${batchProgressStr}...`,
+          is_completed: false
+        });
+        await waitForAIFinish(300000, customStopSel);
         if (stopRequested) break;
 
+        safeReportProgress(callerTabId, {
+          current_index: currentBatchIndex,
+          total_prompts: totalBatchesPerLoop,
+          status_message: `${loopPrefix} Đã tạo xong hình ảnh!`,
+          log: `[Tab AI] ${loopPrefix} ✅ Đã tạo xong hình ảnh cho ${batchProgressStr}!`,
+          is_completed: false
+        });
+
         // ==============================================================
-        // BƯỚC 2: GỬI CÂU LỆNH XEN KẼ (SO LE) NẾU BẬT CÔNG TẮC
+        // BƯỚC 2: SAU KHI HÌNH ẢNH ĐÃ TẠO XONG ➔ MỚI GỬI TIẾP CÂU LỆNH
         // ==============================================================
         if (enablePrefixHeader) {
           let cmdToSend = prefixTemplate
@@ -712,11 +733,11 @@
             .replace(/\s+/g, " ")
             .trim();
 
-          // Nghỉ ngắn giữa đoạn văn bản và câu lệnh để AI cập nhật khung chat
-          await new Promise(r => setTimeout(r, 1500));
+          // Nghỉ 2 giây để AI cập nhật giao diện sau khi tạo xong ảnh
+          await new Promise(r => setTimeout(r, 2000));
           if (stopRequested) break;
 
-          updateHUD(`${loopPrefix} [2/2] Đang gửi câu lệnh cho ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, cmdToSend, false, currentLoop, loopCount, currentBatch.rangeLabel);
+          updateHUD(`${loopPrefix} [2/2] Đang gửi câu lệnh tạo video...`, currentBatchIndex, totalBatchesPerLoop, cmdToSend, false, currentLoop, loopCount, currentBatch.rangeLabel);
 
           safeReportProgress(callerTabId, {
             current_index: currentBatchIndex,
@@ -728,15 +749,15 @@
             loop_count: loopCount,
             duration_minutes: durationMinutes,
             remaining_time_str: getRemainingStr(),
-            status_message: `${loopPrefix} [Bước 2/2] Đang gửi câu lệnh cho ${batchProgressStr}...`,
+            status_message: `${loopPrefix} [Bước 2/2] Đang gửi câu lệnh tạo video...`,
             log: `[Tab AI] ${loopPrefix} [Bước 2/2] Gửi câu lệnh: "${cmdToSend}"`,
             is_completed: false
           });
 
-          // Tìm lại ô chat cho câu lệnh
+          // Tìm lại ô chat sau khi đã sinh ảnh
           let cmdInputBox = await waitForAIReady(customInputSel);
           if (!cmdInputBox) {
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 2000));
             cmdInputBox = findAIInputBox(customInputSel);
           }
 
@@ -745,8 +766,15 @@
             if (stopRequested) break;
 
             // Chờ AI xử lý xong câu lệnh (chuyển đổi thành video)
-            updateHUD(`${loopPrefix} [2/2] ${batchProgressStr}: Đang chờ AI tạo video...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
-            await waitForAIFinish(180000, customStopSel);
+            updateHUD(`${loopPrefix} [2/2] ${batchProgressStr}: Đang chờ AI chuyển đổi thành video...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
+            safeReportProgress(callerTabId, {
+              current_index: currentBatchIndex,
+              total_prompts: totalBatchesPerLoop,
+              status_message: `${loopPrefix} Đang chờ AI tạo video...`,
+              log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI chuyển đổi thành video cho ${batchProgressStr}...`,
+              is_completed: false
+            });
+            await waitForAIFinish(300000, customStopSel);
           }
         }
         if (stopRequested) break;
