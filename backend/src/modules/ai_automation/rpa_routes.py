@@ -234,3 +234,54 @@ def sync_chrome_profile(current_user: Optional[User] = Depends(get_optional_curr
         message="Đã đồng bộ tài khoản Google và toàn bộ phiên đăng nhập từ Chrome thật của bạn thành công!"
     )
 
+
+# --- CÁC ENDPOINT CHO CLOUD GPU WORKER (GOOGLE COLAB / RUNPOD / OLLAMA) ---
+
+@rpa_router.post("/cloud-worker/test", summary="Kiểm tra kết nối Cloud GPU Worker")
+async def test_cloud_worker(payload: Dict[str, Any]):
+    """
+    Kiểm tra trạng thái kết nối tới Cloud GPU Worker (Ollama, vLLM, Colab Tunnel, RunPod).
+    """
+    from src.modules.ai_automation.services.cloud_worker_service import CloudWorkerService
+    worker_url = payload.get("worker_url", "")
+    result = await CloudWorkerService.test_connection(worker_url)
+    return success_response(
+        data=result,
+        message=result.get("message", "Đã kiểm tra kết nối Cloud Worker.")
+    )
+
+
+@rpa_router.post("/cloud-worker/generate", summary="Sinh văn bản/prompt qua Cloud GPU Worker")
+async def generate_with_cloud_worker(payload: Dict[str, Any]):
+    """
+    Gửi prompt trực tiếp lên GPU Cloud để sinh kết quả mà máy tính cá nhân không tốn CPU/GPU.
+    """
+    from src.modules.ai_automation.services.cloud_worker_service import CloudWorkerService
+    worker_url = payload.get("worker_url", "")
+    prompt = payload.get("prompt", "")
+    model = payload.get("model")
+    system_prompt = payload.get("system_prompt", "")
+
+    if not worker_url or not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vui lòng cung cấp đầy đủ worker_url và prompt."
+        )
+
+    try:
+        res = await CloudWorkerService.generate_text(
+            worker_url=worker_url,
+            prompt=prompt,
+            model=model,
+            system_prompt=system_prompt
+        )
+        return success_response(
+            data=res,
+            message="Xử lý trên Cloud GPU thành công!"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Lỗi Cloud Worker: {str(e)}"
+        )
+

@@ -1480,6 +1480,14 @@ async function startRPAPrompter() {
     const totalBatches = Math.ceil(promptsList.length / batchSize);
     const batchDesc = (batchSize > 1) ? ` | Gộp ${batchSize} đoạn/lần (${totalBatches} đợt)` : "";
 
+    // 0. NẾU BẬT CHẾ ĐỘ CLOUD GPU WORKER: Chạy trực tiếp qua GPU Cloud không cần mở tab Chrome AI (0% tải máy cá nhân)
+    if (document.getElementById("rpaEnableCloudWorker")?.checked) {
+        startCloudWorkerExecution(promptsList, {
+            batchSize, enablePrefixHeader, prefixTemplate, specialCode, activeFolderName
+        });
+        return;
+    }
+
     // 1. NẾU ĐÃ KÍCH HOẠT CHROME EXTENSION: TỰ ĐỘNG CHUYỂN SANG TAB BÊN CẠNH VÀ GÕ
     if (document.documentElement.dataset.tuneTextExtension === "active") {
         if (detectedExtensionVersion && !["1.0.9", "1.1.0", "1.2.0", "1.2.1", "1.2.2"].includes(detectedExtensionVersion)) {
@@ -1612,6 +1620,8 @@ async function startRPAPrompter() {
 
 async function stopRPAPrompter() {
     showToast("🛑 Đang dừng Robot ngay lập tức...", "info");
+    stopCloudWorkerRequested = true;
+    isCloudWorkerRunning = false;
 
     // 1. Gửi lệnh dừng khẩn cấp tới Chrome Extension (chạy trên tab bên cạnh)
     window.dispatchEvent(new CustomEvent("TUNE_TEXT_REQUEST_STOP"));
@@ -1675,4 +1685,138 @@ function startRPAPolling() {
             console.error("Lỗi polling RPA:", e);
         }
     }, 1500);
+}
+
+// ==============================================================
+// PHÂN HỆ QUẢN LÝ CLOUD GPU WORKER (GOOGLE COLAB / RUNPOD / OLLAMA)
+// ==============================================================
+function toggleCloudWorkerUI() {
+    const isEnabled = document.getElementById("rpaEnableCloudWorker").checked;
+    const panel = document.getElementById("cloudWorkerPanel");
+    if (isEnabled) {
+        panel.classList.remove("hidden");
+        const savedUrl = localStorage.getItem("tunetext_cloud_worker_url") || "";
+        if (savedUrl) {
+            document.getElementById("cloudWorkerUrlInput").value = savedUrl;
+        }
+    } else {
+        panel.classList.add("hidden");
+    }
+}
+
+async function testCloudWorkerConnection() {
+    const urlInput = document.getElementById("cloudWorkerUrlInput");
+    const workerUrl = (urlInput.value || "").trim();
+    if (!workerUrl) {
+        showToast("Vui lòng nhập đường dẫn Cloud GPU Worker!", "error");
+        return;
+    }
+
+    localStorage.setItem("tunetext_cloud_worker_url", workerUrl);
+    showToast("⏳ Đang kiểm tra kết nối tới Cloud GPU...", "info");
+
+    const statusBox = document.getElementById("cloudWorkerStatusBox");
+    const statusText = document.getElementById("cloudWorkerStatusText");
+    const modelBadge = document.getElementById("cloudWorkerModelBadge");
+
+    try {
+        const res = await fetchAPI("/rpa/cloud-worker/test", {
+            method: "POST",
+            body: JSON.stringify({ worker_url: workerUrl })
+        });
+
+        const data = res.data || {};
+        statusBox.classList.remove("hidden");
+
+        if (data.online) {
+            const modelNames = (data.models && data.models.length > 0) ? data.models.join(", ") : "Ollama Engine Ready";
+            statusText.innerHTML = `🟢 <strong>Online</strong> - ${data.message}`;
+            statusText.className = "text-emerald-400";
+            modelBadge.textContent = modelNames;
+            showToast("Kết nối Cloud GPU Worker thành công!", "success");
+        } else {
+            statusText.innerHTML = `🔴 <strong>Offline</strong> - ${data.message || "Không thể kết nối"}`;
+            statusText.className = "text-rose-400";
+            modelBadge.textContent = "Chưa kết nối";
+            showToast("Không thể kết nối tới Cloud Worker!", "error");
+        }
+    } catch (err) {
+        statusBox.classList.remove("hidden");
+        statusText.innerHTML = `🔴 <strong>Lỗi kết nối</strong>: ${err.message}`;
+        statusText.className = "text-rose-400";
+        showToast("Lỗi: " + err.message, "error");
+    }
+}
+
+// Chạy toàn bộ tiến trình qua Cloud GPU Worker (Colab / RunPod / Ollama)
+let isCloudWorkerRunning = false;
+let stopCloudWorkerRequested = false;
+
+async function startCloudWorkerExecution(promptsList, options) {
+    const workerUrl = (document.getElementById("cloudWorkerUrlInput")?.value || localStorage.getItem("tunetext_cloud_worker_url") || "").trim();
+    if (!workerUrl) {
+        showToast("Vui lòng nhập đường dẫn Cloud GPU Worker trước khi chạy!", "error");
+        return;
+    }
+
+    isCloudWorkerRunning = true;
+    stopCloudWorkerRequested = false;
+
+    const statusCard = document.getElementById("rpaStatusCard");
+    statusCard.classList.remove("hidden");
+    document.getElementById("rpaStatusText").textContent = `Đang xử lý qua Cloud GPU Worker (${workerUrl})...`;
+
+    const logsBox = document.getElementById("rpaLogsBox");
+    const initLog = document.createElement("div");
+    initLog.className = "text-indigo-400 font-bold";
+    initLog.textContent = `[${new Date().toLocaleTimeString()}] ⚡ [Cloud GPU Worker]: Đã kết nối GPU Cloud (${workerUrl}) | Xử lý ${promptsList.length} đoạn văn bản.`;
+    logsBox.appendChild(initLog);
+
+    for (let i = 0; i < promptsList.length; i++) {
+        if (stopCloudWorkerRequested) {
+            const stopLog = document.createElement("div");
+            stopLog.className = "text-rose-400 font-bold";
+            stopLog.textContent = `[${new Date().toLocaleTimeString()}] 🛑 Đã dừng xử lý Cloud Worker.`;
+            logsBox.appendChild(stopLog);
+            break;
+        }
+
+        const currentPrompt = promptsList[i];
+        const progressStr = `Đoạn ${i + 1}/${promptsList.length}`;
+
+        document.getElementById("rpaProgressCount").textContent = `${i + 1} / ${promptsList.length}`;
+        const pct = Math.round(((i + 1) / promptsList.length) * 100);
+        document.getElementById("rpaProgressBar").style.width = `${pct}%`;
+
+        const stepLog = document.createElement("div");
+        stepLog.className = "text-slate-300";
+        stepLog.textContent = `[${new Date().toLocaleTimeString()}] ⏳ [Cloud GPU] Đang xử lý ${progressStr}: "${currentPrompt.substring(0, 45)}..."`;
+        logsBox.appendChild(stepLog);
+        logsBox.scrollTop = logsBox.scrollHeight;
+
+        try {
+            const res = await fetchAPI("/rpa/cloud-worker/generate", {
+                method: "POST",
+                body: JSON.stringify({
+                    worker_url: workerUrl,
+                    prompt: currentPrompt
+                })
+            });
+
+            const reply = res.data?.response || "";
+            const doneLog = document.createElement("div");
+            doneLog.className = "text-emerald-400 font-medium";
+            doneLog.textContent = `[${new Date().toLocaleTimeString()}] ✅ [Cloud GPU] Hoàn tất ${progressStr}: "${reply.substring(0, 50)}..."`;
+            logsBox.appendChild(doneLog);
+            logsBox.scrollTop = logsBox.scrollHeight;
+        } catch (err) {
+            const errLog = document.createElement("div");
+            errLog.className = "text-rose-400";
+            errLog.textContent = `[${new Date().toLocaleTimeString()}] ❌ Lỗi ${progressStr}: ${err.message}`;
+            logsBox.appendChild(errLog);
+        }
+    }
+
+    isCloudWorkerRunning = false;
+    showToast("⚡ Xử lý qua Cloud GPU Worker hoàn tất!", "success");
 }

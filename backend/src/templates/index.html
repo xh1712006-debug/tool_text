@@ -475,6 +475,45 @@
                         </div>
                     </div>
 
+                    <!-- Động Cơ Cloud GPU Miễn Phí (Google Colab / RunPod / Ollama Remote) -->
+                    <div class="border border-indigo-500/30 rounded-2xl p-4 bg-indigo-950/20 backdrop-blur-sm">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <label class="flex items-center gap-2 text-xs font-bold text-indigo-300 cursor-pointer">
+                                <input type="checkbox" id="rpaEnableCloudWorker" onchange="toggleCloudWorkerUI()"
+                                    class="rounded bg-slate-800 border-slate-700 text-indigo-600 focus:ring-0">
+                                <i class="fa-solid fa-cloud-bolt text-indigo-400 text-sm"></i>
+                                <span>Chạy qua Cloud GPU Miễn Phí (Google Colab / Ollama Remote)</span>
+                            </label>
+                            <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
+                                0% Tải Máy Cá Nhân
+                            </span>
+                        </div>
+                        <div id="cloudWorkerPanel" class="hidden mt-3 pt-3 border-t border-slate-800/80 space-y-3">
+                            <div class="text-[11px] text-slate-400">
+                                Đưa toàn bộ tính toán nặng (Muse Glimmer, Llama 3, sinh ảnh/video) lên GPU Cloud miễn phí của Google để máy tính bạn luôn mát và mượt mà.
+                            </div>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <input type="url" id="cloudWorkerUrlInput" placeholder="Dán link Cloudflare Tunnel (https://xxx.trycloudflare.com hoặc http://localhost:11434)"
+                                    class="flex-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-500">
+                                <button type="button" onclick="testCloudWorkerConnection()"
+                                    class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition whitespace-nowrap flex items-center gap-1.5 shadow-md shadow-indigo-500/20">
+                                    <i class="fa-solid fa-plug"></i> Kiểm Tra Kết Nối
+                                </button>
+                            </div>
+                            <div id="cloudWorkerStatusBox" class="hidden p-2.5 rounded-xl text-xs flex items-center justify-between bg-slate-900 border border-slate-800">
+                                <span id="cloudWorkerStatusText" class="text-slate-300"></span>
+                                <span id="cloudWorkerModelBadge" class="font-mono text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/40"></span>
+                            </div>
+                            <div class="flex items-center justify-between text-[11px] flex-wrap gap-2">
+                                <a href="https://colab.research.google.com/" target="_blank"
+                                    class="text-indigo-400 hover:text-indigo-300 underline font-medium flex items-center gap-1">
+                                    <i class="fa-solid fa-up-right-from-square"></i> Mở Google Colab để bật GPU miễn phí
+                                </a>
+                                <span class="text-slate-500">Tệp Notebook nằm trong thư mục <code class="text-indigo-300">cloud_worker/</code></span>
+                            </div>
+                        </div>
+                    </div>
+
                     <div>
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                             <div class="flex items-center gap-2">
