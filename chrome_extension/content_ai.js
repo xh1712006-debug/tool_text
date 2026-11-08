@@ -712,7 +712,6 @@
         await waitForAIFinish(180000, customStopSel);
 
         // 4. Tự động kiểm tra và tải Video về thư mục cùng tên tệp prompt nếu trang sinh ra video
-        const targetVideoFolder = options.folderName || "prompts_video";
         checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId);
 
         // Kiểm tra tiếp sau 3 giây và 6 giây để bắt kịp video render bất đồng bộ
