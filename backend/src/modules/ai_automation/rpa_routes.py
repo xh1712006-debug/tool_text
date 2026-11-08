@@ -332,7 +332,7 @@ async def generate_single_ai_studio(payload: Dict[str, Any]):
 
 
 @rpa_router.post("/ai-studio/batch/start", summary="Bắt đầu tạo hàng loạt ảnh và video nội bộ")
-def start_ai_studio_batch(payload: Dict[str, Any]):
+async def start_ai_studio_batch(payload: Dict[str, Any]):
     """
     Bắt đầu tiến trình tạo hàng loạt ảnh và video từ danh sách prompt.
     Tự động lưu vào thư mục máy tính và không cần mở tab Chrome bên ngoài.
@@ -349,17 +349,22 @@ def start_ai_studio_batch(payload: Dict[str, Any]):
     if not prompts or not isinstance(prompts, list):
         raise HTTPException(status_code=400, detail="Danh sách prompt không được rỗng.")
 
-    res = AIStudioService.start_batch(
-        worker_url=worker_url,
-        prompts=prompts,
-        folder_name=folder_name,
-        generate_video=generate_video,
-        aspect_ratio=aspect_ratio
-    )
-    if not res.get("started"):
-        raise HTTPException(status_code=409, detail=res.get("message"))
+    try:
+        res = AIStudioService.start_batch(
+            worker_url=worker_url,
+            prompts=prompts,
+            folder_name=folder_name,
+            generate_video=generate_video,
+            aspect_ratio=aspect_ratio
+        )
+        if not res.get("started"):
+            raise HTTPException(status_code=409, detail=res.get("message"))
 
-    return success_response(data=res, message=res.get("message"))
+        return success_response(data=res, message=res.get("message"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @rpa_router.get("/ai-studio/batch/status", summary="Lấy tiến độ tạo hàng loạt thời gian thực")

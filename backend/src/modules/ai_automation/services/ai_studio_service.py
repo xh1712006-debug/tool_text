@@ -112,7 +112,13 @@ class AIStudioService:
                 "aspect_ratio": aspect_ratio,
                 "steps": steps
             }
-            res = await client.post(f"{clean_url}/api/generate-image", json=payload)
+            try:
+                res = await client.post(f"{clean_url}/api/generate-image", json=payload)
+            except Exception as conn_err:
+                raise Exception(f"Không thể kết nối tới Cloudflare Tunnel ({conn_err}). Hãy kiểm tra xem Colab còn chạy không.")
+
+            if res.status_code == 502:
+                raise Exception("Lỗi 502 Bad Gateway từ Cloudflare: Server Python trên Colab chưa chạy hoặc bị tắt. Vui lòng bấm chạy lại ô cuối trong Colab!")
             if res.status_code != 200:
                 raise Exception(f"Worker trả về lỗi {res.status_code}: {res.text[:200]}")
             return res.json()
@@ -135,7 +141,13 @@ class AIStudioService:
                 "num_frames": num_frames,
                 "fps": fps
             }
-            res = await client.post(f"{clean_url}/api/generate-video", json=payload)
+            try:
+                res = await client.post(f"{clean_url}/api/generate-video", json=payload)
+            except Exception as conn_err:
+                raise Exception(f"Không thể kết nối tới Cloudflare Tunnel ({conn_err}). Hãy kiểm tra xem Colab còn chạy không.")
+
+            if res.status_code == 502:
+                raise Exception("Lỗi 502 Bad Gateway từ Cloudflare: Server Python trên Colab chưa chạy hoặc bị tắt.")
             if res.status_code != 200:
                 raise Exception(f"Worker trả về lỗi {res.status_code}: {res.text[:200]}")
             return res.json()
@@ -187,16 +199,21 @@ class AIStudioService:
             "error_message": None
         }
 
-        # Khởi chạy coroutine nền
-        cls._batch_task = asyncio.create_task(
-            cls._run_batch_worker(
-                worker_url=worker_url.strip().rstrip("/"),
-                prompts=prompts,
-                folder_name=safe_folder,
-                generate_video=generate_video,
-                aspect_ratio=aspect_ratio
+        # Khởi chạy coroutine nền an toàn
+        try:
+            loop = asyncio.get_running_loop()
+            cls._batch_task = loop.create_task(
+                cls._run_batch_worker(
+                    worker_url=worker_url.strip().rstrip("/"),
+                    prompts=prompts,
+                    folder_name=safe_folder,
+                    generate_video=generate_video,
+                    aspect_ratio=aspect_ratio
+                )
             )
-        )
+        except Exception as task_err:
+            cls._batch_state["is_running"] = False
+            raise Exception(f"Không thể tạo tác vụ chạy ngầm: {str(task_err)}")
 
         return {
             "started": True,
@@ -322,11 +339,16 @@ class AIStudioService:
     @classmethod
     def stop_batch(cls) -> Dict[str, Any]:
         """Gửi tín hiệu dừng tiến trình."""
-        if cls._batch_state["is_running"]:
-            cls._batch_state["stop_requested"] = True
-            cls._log("⚠️ Đang yêu cầu dừng tiến trình...")
-            return {"stopped": True, "message": "Đã gửi tín hiệu dừng tiến trình."}
-        return {"stopped": False, "message": "Hiện không có tiến trình nào đang chạy."}
+        cls._batch_state["stop_requested"] = True
+        cls._batch_state["is_running"] = False
+        cls._batch_state["current_step"] = "idle"
+        if cls._batch_task and not cls._batch_task.done():
+            try:
+                cls._batch_task.cancel()
+            except Exception:
+                pass
+        cls._log("🛑 Người dùng đã bấm dừng tiến trình.")
+        return {"stopped": True, "message": "Đã dừng tiến trình AI Studio thành công."}
 
     @classmethod
     def list_gallery(cls, folder_name: str = "prompts_video") -> Dict[str, Any]:
@@ -371,3 +393,4 @@ class AIStudioService:
             "total_items": len(items),
             "items": items
         }
+
