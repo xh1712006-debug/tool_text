@@ -319,27 +319,39 @@
       sel.addRange(range);
     } catch (e) { }
 
-    // Thử dùng insertText (Chuẩn cho Lexical của Meta/Muse và ProseMirror)
-    let insertSuccess = false;
+    // Phương pháp 1: Dùng ClipboardEvent paste (Phương pháp chuẩn và tối ưu nhất cho Lexical & ProseMirror khi có ký tự xuống dòng)
+    let pasteWorked = false;
     try {
-      insertSuccess = document.execCommand("insertText", false, text);
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      const pasteEvt = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dt
+      });
+      el.dispatchEvent(pasteEvt);
+      const lenNow = (el.textContent || el.innerText || "").trim().length;
+      if (lenNow >= Math.min(text.trim().length * 0.7, 30)) {
+        pasteWorked = true;
+      }
     } catch (e) { }
 
-    // Nếu chưa nhận đủ, dùng ClipboardEvent paste
-    const currentLen = (el.textContent || el.innerText || "").trim().length;
-    if (!insertSuccess || currentLen < Math.min(text.trim().length * 0.7, 40)) {
+    // Phương pháp 2: Nếu paste chưa nhận hoặc bị chặn, chia theo dòng và dùng insertText + insertParagraph
+    if (!pasteWorked) {
       try {
-        const dt = new DataTransfer();
-        dt.setData("text/plain", text);
-        const pasteEvt = new ClipboardEvent("paste", {
-          bubbles: true,
-          cancelable: true,
-          clipboardData: dt
-        });
-        el.dispatchEvent(pasteEvt);
+        const lines = text.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].length > 0) {
+            document.execCommand("insertText", false, lines[i]);
+          }
+          if (i < lines.length - 1) {
+            document.execCommand("insertParagraph", false, null);
+          }
+        }
       } catch (e) { }
     }
 
+    // Phương pháp 3: Fallback cuối cùng nếu vẫn trống
     if ((el.textContent || el.innerText || "").trim() === "") {
       try {
         el.innerText = text;
@@ -630,30 +642,20 @@
           ? `Lô ${currentBatchIndex}/${totalBatchesPerLoop} (${currentBatch.rangeLabel}/${totalPromptsPerLoop})`
           : `Đoạn ${currentBatchIndex}/${totalPromptsPerLoop}`;
 
-        // Ghép câu lệnh mở đầu tự động: Hỗ trợ tùy biến 100% qua template người dùng
-        let promptToSend = currentBatch.combinedPrompt;
-        let prefixHeader = "";
-        if (enablePrefixHeader) {
-          prefixHeader = prefixTemplate
-            .replace(/{count}/g, currentBatch.count)
-            .replace(/{batch}/g, currentBatchIndex)
-            .replace(/{code}/g, specialCode)
-            .replace(/{folder}/g, targetVideoFolder)
-            .replace(/\s+/g, " ")
-            .trim();
-          if (!prefixHeader.endsWith(":")) {
-            prefixHeader += ":";
-          }
-          promptToSend = `${prefixHeader}\n\n${currentBatch.combinedPrompt}`;
-        }
+        const customInputSel = options.inputSelector || options.customInput || "";
+        const customSendSel = options.sendSelector || options.customSend || "";
+        const customStopSel = options.stopSelector || options.customStop || "";
 
         if (isTimeMode) {
           loopPrefix = `[Lượt ${currentLoop} ${getRemainingStr()}]`;
         }
 
-        updateHUD(`${loopPrefix} Đang chuẩn bị gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptToSend, false, currentLoop, loopCount, currentBatch.rangeLabel);
+        // ==============================================================
+        // BƯỚC 1: GỬI ĐOẠN VĂN BẢN TỰ ĐỘNG (PROMPT NỘI DUNG TỪ DANH SÁCH)
+        // ==============================================================
+        const promptText = currentBatch.combinedPrompt;
+        updateHUD(`${loopPrefix} [1/2] Đang chuẩn bị gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptText, false, currentLoop, loopCount, currentBatch.rangeLabel);
 
-        // Báo tiến độ về Tab Tune-Text an toàn
         safeReportProgress(callerTabId, {
           current_index: currentBatchIndex,
           total_prompts: totalBatchesPerLoop,
@@ -664,28 +666,14 @@
           loop_count: loopCount,
           duration_minutes: durationMinutes,
           remaining_time_str: getRemainingStr(),
-          status_message: `${loopPrefix} Đang gửi ${batchProgressStr} (Chạy ngầm)...`,
-          log: `[Tab AI] ${loopPrefix} Đang gửi ${batchProgressStr}${prefixHeader ? ` [Lệnh: "${prefixHeader}"]` : ''}: "${currentBatch.combinedPrompt.substring(0, 40)}..."`,
+          status_message: `${loopPrefix} [Bước 1/2] Đang gửi nội dung ${batchProgressStr}...`,
+          log: `[Tab AI] ${loopPrefix} [Bước 1/2] Gửi đoạn văn bản ${batchProgressStr}: "${promptText.substring(0, 50)}..."`,
           is_completed: false
         });
 
-        const customInputSel = options.inputSelector || options.customInput || "";
-        const customSendSel = options.sendSelector || options.customSend || "";
-        const customStopSel = options.stopSelector || options.customStop || "";
-
-        // 1. Chờ AI rảnh từ câu trước và tìm ô chat sẵn sàng
-        updateHUD(`${loopPrefix} Đang chuẩn bị ô chat cho ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
+        // 1a. Chờ AI rảnh và tìm ô chat
         let inputBox = await waitForAIReady(customInputSel);
-
         if (!inputBox) {
-          safeReportProgress(callerTabId, {
-            current_index: currentBatchIndex,
-            total_prompts: totalBatchesPerLoop,
-            status_message: `⚠️ Đang tìm ô chat trên tab AI cho ${batchProgressStr}...`,
-            log: `[Lưu ý] Đang tìm ô nhập prompt trên tab AI (${currentBatch.rangeLabel}). Hãy đảm bảo tab AI đang mở khung chat (hoặc click chuột vào ô nhập liệu)!`,
-            is_completed: false
-          });
-          console.warn("Chưa tìm thấy ô nhập liệu, thử lại sau 2 giây...");
           await new Promise(r => setTimeout(r, 2000));
           inputBox = findAIInputBox(customInputSel);
         }
@@ -702,19 +690,71 @@
           continue;
         }
 
-        // 2. Gõ và gửi đúng 1 lần duy nhất nội dung đã kèm câu mở đầu và mã đặc biệt
-        updateHUD(`${loopPrefix} Đang gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptToSend, false, currentLoop, loopCount, currentBatch.rangeLabel);
-        await sendSinglePrompt(inputBox, promptToSend, customSendSel, customInputSel);
+        // 1b. Gõ đúng và đủ toàn bộ nội dung đoạn văn bản
+        updateHUD(`${loopPrefix} [1/2] Đang gõ ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptText, false, currentLoop, loopCount, currentBatch.rangeLabel);
+        await sendSinglePrompt(inputBox, promptText, customSendSel, customInputSel);
         if (stopRequested) break;
 
-        // 3. Chờ AI phản hồi xong hoàn toàn (Dựa trên nút Stop và độ ổn định text)
-        updateHUD(`${loopPrefix} ${batchProgressStr}: Đang chờ AI xử lý và tạo hình ảnh/video...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
+        // 1c. Chờ AI phản hồi xong đoạn văn bản (Ví dụ: sinh hình ảnh đầu tiên)
+        updateHUD(`${loopPrefix} [1/2] ${batchProgressStr}: Đang chờ AI phản hồi...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
         await waitForAIFinish(180000, customStopSel);
+        if (stopRequested) break;
 
-        // 4. Tự động kiểm tra và tải Video về thư mục cùng tên tệp prompt nếu trang sinh ra video
+        // ==============================================================
+        // BƯỚC 2: GỬI CÂU LỆNH XEN KẼ (SO LE) NẾU BẬT CÔNG TẮC
+        // ==============================================================
+        if (enablePrefixHeader) {
+          let cmdToSend = prefixTemplate
+            .replace(/{count}/g, currentBatch.count)
+            .replace(/{batch}/g, currentBatchIndex)
+            .replace(/{code}/g, specialCode)
+            .replace(/{folder}/g, targetVideoFolder)
+            .replace(/\s+/g, " ")
+            .trim();
+
+          // Nghỉ ngắn giữa đoạn văn bản và câu lệnh để AI cập nhật khung chat
+          await new Promise(r => setTimeout(r, 1500));
+          if (stopRequested) break;
+
+          updateHUD(`${loopPrefix} [2/2] Đang gửi câu lệnh cho ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, cmdToSend, false, currentLoop, loopCount, currentBatch.rangeLabel);
+
+          safeReportProgress(callerTabId, {
+            current_index: currentBatchIndex,
+            total_prompts: totalBatchesPerLoop,
+            actual_prompt_count: totalPromptsPerLoop,
+            batch_size: batchSize,
+            batch_label: currentBatch.rangeLabel,
+            current_loop: currentLoop,
+            loop_count: loopCount,
+            duration_minutes: durationMinutes,
+            remaining_time_str: getRemainingStr(),
+            status_message: `${loopPrefix} [Bước 2/2] Đang gửi câu lệnh cho ${batchProgressStr}...`,
+            log: `[Tab AI] ${loopPrefix} [Bước 2/2] Gửi câu lệnh: "${cmdToSend}"`,
+            is_completed: false
+          });
+
+          // Tìm lại ô chat cho câu lệnh
+          let cmdInputBox = await waitForAIReady(customInputSel);
+          if (!cmdInputBox) {
+            await new Promise(r => setTimeout(r, 1500));
+            cmdInputBox = findAIInputBox(customInputSel);
+          }
+
+          if (cmdInputBox) {
+            await sendSinglePrompt(cmdInputBox, cmdToSend, customSendSel, customInputSel);
+            if (stopRequested) break;
+
+            // Chờ AI xử lý xong câu lệnh (chuyển đổi thành video)
+            updateHUD(`${loopPrefix} [2/2] ${batchProgressStr}: Đang chờ AI tạo video...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
+            await waitForAIFinish(180000, customStopSel);
+          }
+        }
+        if (stopRequested) break;
+
+        // ==============================================================
+        // BƯỚC 3: TỰ ĐỘNG TẢI VIDEO VỀ THƯ MỤC CÙNG TÊN TỆP PROMPT
+        // ==============================================================
         checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId);
-
-        // Kiểm tra tiếp sau 3 giây và 6 giây để bắt kịp video render bất đồng bộ
         setTimeout(() => checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId), 3000);
         setTimeout(() => checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId), 6000);
 

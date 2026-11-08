@@ -1566,7 +1566,7 @@ async function startRPAPrompter() {
                     .replace(/\s+/g, " ")
                     .trim();
                 if (!previewCmd.endsWith(":")) previewCmd += ":";
-                prefixLog.textContent = `[${new Date().toLocaleTimeString()}] 🪄 [Mẫu câu mở đầu]: Sẽ chèn "${previewCmd}" trước mỗi đợt gửi.`;
+                prefixLog.textContent = `[${new Date().toLocaleTimeString()}] 🪄 [Chế độ So le]: Gửi Đoạn văn bản trước ➔ sau đó gửi tiếp Câu lệnh: "${previewCmd}"`;
                 logsBox.appendChild(prefixLog);
             }
 
