@@ -87,15 +87,20 @@
     <!-- Main Content -->
     <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-6">
 
-        <!-- Bộ Chuyển Đổi Tab Chính: Tinh Chỉnh Văn Bản vs Robot Tự Động Gõ ChatGPT -->
-        <div class="flex items-center gap-3 p-1.5 rounded-2xl glass-panel w-fit border border-slate-800">
+        <!-- Bộ Chuyển Đổi Tab Chính: Tinh Chỉnh Văn Bản vs Robot Tự Động Gõ vs AI Studio Nội Bộ -->
+        <div class="flex items-center gap-2 sm:gap-3 p-1.5 rounded-2xl glass-panel w-fit border border-slate-800 flex-wrap">
             <button id="tabMainTuner" onclick="switchMainTab('tuner')"
-                class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 transition">
+                class="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 transition">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> <span>1. Tinh Chỉnh Văn Bản</span>
             </button>
             <button id="tabMainRPA" onclick="switchMainTab('rpa')"
-                class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-slate-800/80 hover:bg-slate-800 text-slate-300 transition">
-                <i class="fa-solid fa-robot text-purple-400"></i> <span>2. Robot Tự Động Gõ Đa Nền Tảng AI</span>
+                class="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-slate-800/80 hover:bg-slate-800 text-slate-300 transition">
+                <i class="fa-solid fa-robot text-purple-400"></i> <span>2. Robot Gõ Vào Web Ngoài</span>
+            </button>
+            <button id="tabMainStudio" onclick="switchMainTab('studio')"
+                class="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-slate-800/80 hover:bg-slate-800 text-slate-300 transition">
+                <i class="fa-solid fa-clapperboard text-amber-400"></i> <span>3. AI Studio Trực Tiếp (Tạo Ảnh & Video Nội Bộ)</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">Không Cần Web Ngoài</span>
             </button>
         </div>
 
@@ -898,6 +903,237 @@
                 </div>
             </section>
         </div><!-- KẾT THÚC PHẦN 2: SECTION RPA -->
+
+        <!-- PHẦN 3: AI STUDIO TRỰC TIẾP (TẠO ẢNH & VIDEO NỘI BỘ KHÔNG CẦN WEB NGOÀI) -->
+        <div id="sectionStudio" class="hidden space-y-8">
+            <section class="glass-panel p-6 sm:p-8 rounded-3xl shadow-xl border border-amber-500/20">
+                <!-- Header AI Studio -->
+                <div class="pb-6 border-b border-slate-800">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/20 text-white text-lg">
+                                <i class="fa-solid fa-clapperboard"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                                    AI Studio Trực Tiếp (Tạo Ảnh & Video Nội Bộ)
+                                    <span class="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">Native Studio</span>
+                                </h2>
+                                <p class="text-xs text-slate-400 mt-0.5">
+                                    Tự động tạo hình ảnh 8K & kết xuất video MP4 trực tiếp qua Cloud GPU (Google Colab T4 / RunPod). Không kiểm duyệt, không lo bị từ chối video, không cần mở Chrome phụ!
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <a href="https://colab.research.google.com/" target="_blank"
+                                class="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition">
+                                <i class="fa-solid fa-up-right-from-square"></i> <span>Mở Colab GPU Miễn Phí</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 pt-6">
+                    <!-- Khung Kết Nối Cloud GPU Worker -->
+                    <div class="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <label class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                                <i class="fa-solid fa-cloud-bolt text-amber-400"></i>
+                                <span>Đường dẫn Cloud GPU Worker (Cloudflare Tunnel URL)</span>
+                            </label>
+                            <span class="text-[11px] text-slate-400">Chạy tệp <code class="text-amber-300">cloud_worker/Tune_Text_AI_Studio_Worker.ipynb</code> trên Colab để lấy link</span>
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <div class="relative flex-1">
+                                <i class="fa-solid fa-link absolute left-3.5 top-3 text-slate-500 text-xs"></i>
+                                <input type="url" id="studioWorkerUrlInput" placeholder="Ví dụ: https://random-name.trycloudflare.com"
+                                    class="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500">
+                            </div>
+                            <button type="button" onclick="testStudioWorkerConnection()"
+                                class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 whitespace-nowrap">
+                                <i class="fa-solid fa-bolt"></i> <span>Kiểm Tra Kết Nối GPU</span>
+                            </button>
+                        </div>
+                        <!-- Thẻ Trạng Thái Kết Nối -->
+                        <div id="studioWorkerStatusCard" class="hidden p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <span id="studioWorkerStatusDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span id="studioWorkerStatusMsg" class="text-slate-200 font-medium">Đang kiểm tra...</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span id="studioWorkerHardwareBadge" class="font-mono text-[11px] px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">Tesla T4 16GB</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tùy Chọn Cấu Hình Studio -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <!-- Chế độ sinh -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-2">Quy Trình Tạo Media</label>
+                            <select id="studioPipelineMode"
+                                class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500">
+                                <option value="pipeline">🎬 Trọn Gói: Prompt ➔ Ảnh 8K ➔ Video MP4</option>
+                                <option value="image_only">🎨 Chỉ Tạo Hình Ảnh (Text-to-Image)</option>
+                            </select>
+                        </div>
+
+                        <!-- Tỉ lệ khung hình -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-2">Tỉ Lệ Khung Hình</label>
+                            <select id="studioAspectRatio"
+                                class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500">
+                                <option value="16:9">16:9 Ngang (YouTube / Phim Cinematic)</option>
+                                <option value="9:16">9:16 Dọc (TikTok / Reels / Shorts)</option>
+                                <option value="1:1">1:1 Vuông (Instagram / Ảnh Vuông)</option>
+                            </select>
+                        </div>
+
+                        <!-- Thư mục lưu trữ -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-2">Tên Thư Mục Lưu Trữ</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-folder absolute left-3.5 top-3 text-slate-500 text-xs"></i>
+                                <input type="text" id="studioFolderName" value="prompts_video" placeholder="prompts_video"
+                                    class="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Danh Sách Prompts -->
+                    <div>
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs font-semibold text-slate-300">
+                                    Danh Sách Prompt Đầu Vào (Sinh Ảnh & Video Tuần Tự)
+                                </label>
+                                <span id="studioPromptsCountBadge"
+                                    class="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-amber-300 font-mono transition">
+                                    0 đoạn
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <button type="button" onclick="syncPromptsFromRPA()"
+                                    class="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-medium transition flex items-center gap-1">
+                                    <i class="fa-solid fa-repeat"></i> <span>Lấy từ Tab RPA</span>
+                                </button>
+                                <input type="file" id="studioPromptFileInput" accept=".docx,.pdf,.txt" multiple
+                                    onchange="handleStudioPromptFileSelect(this)" class="hidden">
+                                <button type="button" onclick="document.getElementById('studioPromptFileInput').click()"
+                                    class="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-medium transition flex items-center gap-1.5 shadow-sm">
+                                    <i class="fa-solid fa-file-arrow-up text-amber-400"></i> Tải Tệp Lên
+                                </button>
+                                <button type="button" onclick="clearStudioPrompts()"
+                                    class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 text-xs font-medium transition flex items-center gap-1">
+                                    <i class="fa-regular fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Khung Nhập Prompt -->
+                        <div class="relative">
+                            <textarea id="studioPromptsText" rows="7"
+                                placeholder="Dán danh sách prompt tại đây hoặc kéo thả file .txt, .docx vào... (Mỗi đoạn cách nhau 1 dòng trống)"
+                                class="w-full p-4 rounded-2xl bg-slate-900 border border-slate-700/80 text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed font-sans"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Nút Thao Tác Bắt Đầu / Dừng -->
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" onclick="loadStudioGallery()"
+                                class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition border border-slate-700">
+                                <i class="fa-solid fa-photo-film text-amber-400"></i> <span>Xem Thư Viện Media Đã Tạo</span>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button type="button" onclick="stopStudioBatch()"
+                                class="px-5 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-xs font-semibold transition">
+                                <i class="fa-solid fa-stop mr-1"></i> Dừng Lại
+                            </button>
+                            <button type="button" onclick="startStudioBatch()"
+                                class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/25 flex items-center gap-2 transition">
+                                <i class="fa-solid fa-play"></i> <span>Khởi Chạy AI Studio (Không Cần Web Ngoài)</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bảng Theo Dõi Tiến Độ Thời Gian Thực (Live Studio Monitor) -->
+                <div id="studioStatusCard" class="hidden mt-8 p-6 rounded-2xl bg-slate-950/90 border border-amber-500/30 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+                            <span id="studioStatusText" class="text-sm font-semibold text-white">Đang khởi tạo AI Studio...</span>
+                        </div>
+                        <span id="studioProgressCount" class="text-xs font-mono px-3 py-1 rounded-lg bg-slate-800 text-amber-300">0 / 0</span>
+                    </div>
+
+                    <!-- Thanh Tiến Độ -->
+                    <div class="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
+                        <div id="studioProgressBar" class="h-full bg-gradient-to-r from-amber-500 to-orange-500 w-0 transition-all duration-300"></div>
+                    </div>
+
+                    <!-- Xem Trước Kết Quả Thời Gian Thực (Ảnh & Video Của Đoạn Đang Chạy) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                        <!-- Khung Ảnh Vừa Tạo -->
+                        <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                            <div class="flex items-center justify-between text-xs text-slate-400">
+                                <span class="font-semibold text-slate-300 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-image text-amber-400"></i> Ảnh Vừa Tạo (Text-to-Image 8K)
+                                </span>
+                                <span id="studioLiveImageBadge" class="text-[10px] text-slate-500">Chờ dữ liệu...</span>
+                            </div>
+                            <div class="aspect-video w-full rounded-lg bg-slate-950 flex items-center justify-center overflow-hidden border border-slate-800">
+                                <img id="studioLiveImagePreview" src="" alt="Live Preview" class="w-full h-full object-cover hidden">
+                                <div id="studioLiveImagePlaceholder" class="text-xs text-slate-600 flex flex-col items-center gap-1">
+                                    <i class="fa-regular fa-image text-2xl"></i>
+                                    <span>Chưa có ảnh</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Khung Video Vừa Tạo -->
+                        <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                            <div class="flex items-center justify-between text-xs text-slate-400">
+                                <span class="font-semibold text-slate-300 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-video text-amber-400"></i> Video Vừa Tạo (Image-to-Video MP4)
+                                </span>
+                                <span id="studioLiveVideoBadge" class="text-[10px] text-slate-500">Chờ dữ liệu...</span>
+                            </div>
+                            <div class="aspect-video w-full rounded-lg bg-slate-950 flex items-center justify-center overflow-hidden border border-slate-800">
+                                <video id="studioLiveVideoPreview" controls autoplay loop class="w-full h-full object-cover hidden"></video>
+                                <div id="studioLiveVideoPlaceholder" class="text-xs text-slate-600 flex flex-col items-center gap-1">
+                                    <i class="fa-solid fa-film text-2xl"></i>
+                                    <span>Chưa có video</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Nhật Ký Studio Real-time -->
+                    <div>
+                        <span class="text-[11px] text-slate-400 block mb-1 font-mono">Nhật ký tiến trình AI Studio:</span>
+                        <div id="studioLogsBox" class="p-3 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300 h-36 overflow-y-auto space-y-1">
+                            <div class="text-slate-500">Đang chờ lệnh khởi chạy...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Thư Viện Media Đã Tạo (Interactive Gallery) -->
+                <div id="studioGalleryContainer" class="hidden mt-8 p-6 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-photo-film text-amber-400"></i> Thư Viện Ảnh & Video Đã Tạo (<span id="studioGalleryCount">0</span> mục)
+                        </h3>
+                        <span id="studioGalleryFolderBadge" class="text-xs font-mono text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20"></span>
+                    </div>
+                    <div id="studioGalleryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+                        <!-- Media Card Template được chèn tự động bằng JS -->
+                    </div>
+                </div>
+            </section>
+        </div><!-- KẾT THÚC PHẦN 3: SECTION STUDIO -->
     </main>
 
     <!-- Modal Xác thực (Đăng nhập / Đăng ký) -->

@@ -54,3 +54,4 @@ Nếu bạn cần chạy hàng chục nghìn prompt hoặc render video liên t�
 - ✅ **Máy cá nhân mát rượi**: CPU/RAM máy tính của bạn không tăng dù chỉ 1%.
 - ✅ **Tốc độ siêu nhanh**: Chạy bằng card Tesla T4 / RTX 3090 trên mạng Internet 10Gbps của Data Center.
 - ✅ **Làm việc đa nhiệm**: Bạn có thể thoải mái xem phim, chơi game, lướt web trên máy tính mà không bị đơ giật.
+

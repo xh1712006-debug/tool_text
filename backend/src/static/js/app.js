@@ -640,19 +640,32 @@ let currentAIPresets = [];
 function switchMainTab(tab) {
     const tabTuner = document.getElementById("tabMainTuner");
     const tabRPA = document.getElementById("tabMainRPA");
+    const tabStudio = document.getElementById("tabMainStudio");
     const sectionTuner = document.getElementById("sectionTuner");
     const sectionRPA = document.getElementById("sectionRPA");
+    const sectionStudio = document.getElementById("sectionStudio");
+
+    const defaultClass = "flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-slate-800/80 hover:bg-slate-800 text-slate-300 transition";
+
+    // Ẩn tất cả các section trước
+    sectionTuner?.classList.add("hidden");
+    sectionRPA?.classList.add("hidden");
+    sectionStudio?.classList.add("hidden");
+
+    if (tabTuner) tabTuner.className = defaultClass;
+    if (tabRPA) tabRPA.className = defaultClass;
+    if (tabStudio) tabStudio.className = defaultClass;
 
     if (tab === "tuner") {
-        sectionTuner.classList.remove("hidden");
-        sectionRPA.classList.add("hidden");
-        tabTuner.className = "flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 transition";
-        tabRPA.className = "flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-slate-800/80 hover:bg-slate-800 text-slate-300 transition";
-    } else {
-        sectionTuner.classList.add("hidden");
-        sectionRPA.classList.remove("hidden");
-        tabRPA.className = "flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/20 transition";
-        tabTuner.className = "flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-slate-800/80 hover:bg-slate-800 text-slate-300 transition";
+        sectionTuner?.classList.remove("hidden");
+        if (tabTuner) tabTuner.className = "flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 transition";
+    } else if (tab === "rpa") {
+        sectionRPA?.classList.remove("hidden");
+        if (tabRPA) tabRPA.className = "flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/20 transition";
+    } else if (tab === "studio") {
+        sectionStudio?.classList.remove("hidden");
+        if (tabStudio) tabStudio.className = "flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition";
+        initStudioUI();
     }
 }
 
@@ -1820,3 +1833,393 @@ async function startCloudWorkerExecution(promptsList, options) {
     isCloudWorkerRunning = false;
     showToast("⚡ Xử lý qua Cloud GPU Worker hoàn tất!", "success");
 }
+
+// ==============================================================
+// PHẦN 3: AI STUDIO NỘI BỘ (TỰ TẠO ẢNH & VIDEO TRỰC TIẾP TỪ CLOUD GPU)
+// ==============================================================
+
+let studioPollTimer = null;
+let isStudioRunning = false;
+
+function initStudioUI() {
+    // Khôi phục URL worker đã lưu
+    const savedUrl = localStorage.getItem("tunetext_studio_worker_url") || localStorage.getItem("tunetext_cloud_worker_url") || "";
+    const input = document.getElementById("studioWorkerUrlInput");
+    if (input && !input.value) {
+        input.value = savedUrl;
+    }
+
+    const textarea = document.getElementById("studioPromptsText");
+    if (textarea && !textarea.dataset.listenerAttached) {
+        textarea.dataset.listenerAttached = "true";
+        textarea.addEventListener("input", updateStudioPromptsCount);
+    }
+    updateStudioPromptsCount();
+}
+
+function updateStudioPromptsCount() {
+    const textarea = document.getElementById("studioPromptsText");
+    const badge = document.getElementById("studioPromptsCountBadge");
+    if (!textarea || !badge) return;
+
+    const text = textarea.value.trim();
+    if (!text) {
+        badge.textContent = "0 đoạn";
+        return;
+    }
+
+    const chunks = text.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+    badge.textContent = `${chunks.length} đoạn`;
+}
+
+function clearStudioPrompts() {
+    const textarea = document.getElementById("studioPromptsText");
+    if (textarea) {
+        textarea.value = "";
+        updateStudioPromptsCount();
+    }
+}
+
+function syncPromptsFromRPA() {
+    const rpaTextarea = document.getElementById("rpaPromptsText");
+    const studioTextarea = document.getElementById("studioPromptsText");
+    if (!rpaTextarea || !studioTextarea) return;
+
+    const rpaText = rpaTextarea.value.trim();
+    if (!rpaText) {
+        showToast("Tab Robot RPA hiện chưa có đoạn prompt nào để sao chép!", "info");
+        return;
+    }
+
+    studioTextarea.value = rpaText;
+    updateStudioPromptsCount();
+    showToast("Đã đồng bộ toàn bộ danh sách prompt từ Tab RPA sang AI Studio thành công!", "success");
+}
+
+async function handleStudioPromptFileSelect(input) {
+    if (!input.files || input.files.length === 0) return;
+    const files = Array.from(input.files);
+    const textarea = document.getElementById("studioPromptsText");
+    let combined = [];
+
+    // Tự động gán tên folder theo tệp đầu tiên
+    const firstFileName = files[0].name.replace(/\.[^/.]+$/, "");
+    const folderInput = document.getElementById("studioFolderName");
+    if (folderInput) {
+        folderInput.value = firstFileName.replace(/[\\/*?:"<>|]/g, "_").trim();
+    }
+
+    for (const file of files) {
+        try {
+            const ext = file.name.split('.').pop().toLowerCase();
+            let text = "";
+            if (ext === "txt") {
+                text = await file.text();
+            } else {
+                // Sử dụng API parse file có sẵn của hệ thống
+                const formData = new FormData();
+                formData.append("file", file);
+                const res = await fetch(`${API_BASE}/extract-text`, {
+                    method: "POST",
+                    body: formData
+                });
+                const json = await res.json();
+                text = json.data?.text || "";
+            }
+            if (text.trim()) combined.push(text.trim());
+        } catch (e) {
+            console.error("Lỗi đọc file:", e);
+        }
+    }
+
+    if (combined.length > 0) {
+        textarea.value = combined.join("\n\n");
+        updateStudioPromptsCount();
+        showToast(`Đã nạp thành công ${files.length} tệp prompt vào AI Studio!`, "success");
+    }
+}
+
+async function testStudioWorkerConnection() {
+    const input = document.getElementById("studioWorkerUrlInput");
+    const workerUrl = (input?.value || "").trim();
+
+    if (!workerUrl) {
+        showToast("Vui lòng nhập đường dẫn Cloud GPU Worker trước!", "error");
+        return;
+    }
+
+    const card = document.getElementById("studioWorkerStatusCard");
+    const dot = document.getElementById("studioWorkerStatusDot");
+    const msg = document.getElementById("studioWorkerStatusMsg");
+    const badge = document.getElementById("studioWorkerHardwareBadge");
+
+    card.classList.remove("hidden");
+    dot.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse";
+    msg.textContent = "Đang kết nối tới Cloud GPU Worker...";
+    badge.textContent = "Kiểm tra...";
+
+    try {
+        const res = await fetchAPI("/rpa/ai-studio/test", {
+            method: "POST",
+            body: JSON.stringify({ worker_url: workerUrl })
+        });
+
+        const data = res.data || {};
+        if (data.connected) {
+            dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+            msg.textContent = data.message || "Kết nối GPU thành công!";
+            badge.textContent = data.gpu || "GPU Sẵn Sàng";
+            localStorage.setItem("tunetext_studio_worker_url", workerUrl);
+            localStorage.setItem("tunetext_cloud_worker_url", workerUrl);
+            showToast("Kết nối Cloud GPU Worker thành công!", "success");
+        } else {
+            dot.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+            msg.textContent = data.message || "Không thể kết nối.";
+            badge.textContent = "Mất kết nối";
+            showToast(data.message || "Lỗi kết nối", "error");
+        }
+    } catch (err) {
+        dot.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+        msg.textContent = `Lỗi: ${err.message}`;
+        badge.textContent = "Lỗi";
+        showToast(`Lỗi kiểm tra worker: ${err.message}`, "error");
+    }
+}
+
+async function startStudioBatch() {
+    if (!state.token) {
+        openAuthModal();
+        showToast("Vui lòng đăng nhập trước khi chạy AI Studio!", "info");
+        return;
+    }
+
+    const workerUrl = (document.getElementById("studioWorkerUrlInput")?.value || "").trim();
+    if (!workerUrl) {
+        showToast("Vui lòng nhập đường dẫn Cloud GPU Worker trước!", "error");
+        return;
+    }
+
+    const text = document.getElementById("studioPromptsText")?.value.trim() || "";
+    if (!text) {
+        showToast("Vui lòng nhập hoặc nạp danh sách prompt trước khi khởi chạy!", "error");
+        return;
+    }
+
+    const prompts = text.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+    if (prompts.length === 0) {
+        showToast("Chưa có đoạn prompt hợp lệ nào!", "error");
+        return;
+    }
+
+    const pipelineMode = document.getElementById("studioPipelineMode")?.value || "pipeline";
+    const aspectRatio = document.getElementById("studioAspectRatio")?.value || "16:9";
+    const folderName = document.getElementById("studioFolderName")?.value.trim() || "prompts_video";
+
+    try {
+        const res = await fetchAPI("/rpa/ai-studio/batch/start", {
+            method: "POST",
+            body: JSON.stringify({
+                worker_url: workerUrl,
+                prompts: prompts,
+                folder_name: folderName,
+                generate_video: (pipelineMode === "pipeline"),
+                aspect_ratio: aspectRatio
+            })
+        });
+
+        isStudioRunning = true;
+        showToast(`Đã bắt đầu tiến trình AI Studio cho ${prompts.length} đoạn văn bản!`, "success");
+
+        // Hiển thị khung tiến độ
+        const statusCard = document.getElementById("studioStatusCard");
+        statusCard.classList.remove("hidden");
+        document.getElementById("studioStatusText").textContent = `Đang bắt đầu tạo media...`;
+        document.getElementById("studioProgressCount").textContent = `0 / ${prompts.length}`;
+        document.getElementById("studioProgressBar").style.width = "0%";
+
+        // Bắt đầu lắng nghe trạng thái định kỳ
+        if (studioPollTimer) clearInterval(studioPollTimer);
+        studioPollTimer = setInterval(pollStudioStatus, 1500);
+
+    } catch (err) {
+        showToast(`Không thể khởi chạy: ${err.message}`, "error");
+    }
+}
+
+async function pollStudioStatus() {
+    try {
+        const res = await fetch(`${API_BASE}/rpa/ai-studio/batch/status`);
+        const json = await res.json();
+        const data = json.data || {};
+
+        const total = data.total_prompts || 1;
+        const current = data.current_index || 0;
+        const pct = Math.round((current / total) * 100);
+
+        document.getElementById("studioProgressCount").textContent = `${current} / ${total}`;
+        document.getElementById("studioProgressBar").style.width = `${pct}%`;
+
+        // Cập nhật trạng thái chữ
+        const statusText = document.getElementById("studioStatusText");
+        if (data.current_step === "generating_image") {
+            statusText.textContent = `[Đoạn ${current}/${total}] 🎨 Đang vẽ hình ảnh 8K qua Cloud GPU...`;
+        } else if (data.current_step === "generating_video") {
+            statusText.textContent = `[Đoạn ${current}/${total}] 🎬 Đang kết xuất video chuyển động MP4...`;
+        } else if (data.current_step === "completed") {
+            statusText.textContent = `🏆 Đã hoàn thành toàn bộ ${total} đoạn văn bản!`;
+        } else if (data.current_step === "error") {
+            statusText.textContent = `❌ Lỗi tiến trình: ${data.error_message || 'Không rõ'}`;
+        }
+
+        // Cập nhật xem trước ảnh trực tiếp
+        if (data.current_image_url) {
+            const imgEl = document.getElementById("studioLiveImagePreview");
+            const imgHolder = document.getElementById("studioLiveImagePlaceholder");
+            const imgBadge = document.getElementById("studioLiveImageBadge");
+            if (imgEl && imgEl.src !== window.location.origin + data.current_image_url) {
+                imgEl.src = data.current_image_url;
+                imgEl.classList.remove("hidden");
+                imgHolder?.classList.add("hidden");
+                if (imgBadge) imgBadge.textContent = `Đoạn ${current}`;
+            }
+        }
+
+        // Cập nhật xem trước video trực tiếp
+        if (data.current_video_url) {
+            const vidEl = document.getElementById("studioLiveVideoPreview");
+            const vidHolder = document.getElementById("studioLiveVideoPlaceholder");
+            const vidBadge = document.getElementById("studioLiveVideoBadge");
+            if (vidEl && vidEl.src !== window.location.origin + data.current_video_url) {
+                vidEl.src = data.current_video_url;
+                vidEl.classList.remove("hidden");
+                vidHolder?.classList.add("hidden");
+                vidEl.play().catch(() => {});
+                if (vidBadge) vidBadge.textContent = `Đoạn ${current}`;
+            }
+        }
+
+        // Cập nhật hộp nhật ký
+        const logsBox = document.getElementById("studioLogsBox");
+        if (logsBox && data.logs && data.logs.length > 0) {
+            logsBox.innerHTML = "";
+            data.logs.forEach(l => {
+                const row = document.createElement("div");
+                row.className = l.includes("✅") || l.includes("🎉") ? "text-emerald-400 font-medium" :
+                                l.includes("❌") || l.includes("💥") ? "text-rose-400" :
+                                l.includes("🎨") || l.includes("🎬") ? "text-amber-300" : "text-slate-300";
+                row.textContent = l;
+                logsBox.appendChild(row);
+            });
+            logsBox.scrollTop = logsBox.scrollHeight;
+        }
+
+        // Nếu tiến trình đã kết thúc
+        if (!data.is_running) {
+            isStudioRunning = false;
+            clearInterval(studioPollTimer);
+            studioPollTimer = null;
+            if (data.current_step === "completed") {
+                showToast("🏆 AI Studio đã hoàn thành toàn bộ hình ảnh và video!", "success");
+                loadStudioGallery();
+            }
+        }
+
+    } catch (e) {
+        console.warn("Lỗi cập nhật trạng thái studio:", e);
+    }
+}
+
+async function stopStudioBatch() {
+    try {
+        const res = await fetchAPI("/rpa/ai-studio/batch/stop", { method: "POST" });
+        showToast(res.message || "Đã gửi tín hiệu dừng AI Studio.", "info");
+    } catch (err) {
+        showToast(`Lỗi dừng tiến trình: ${err.message}`, "error");
+    }
+}
+
+async function loadStudioGallery() {
+    const folderName = document.getElementById("studioFolderName")?.value.trim() || "prompts_video";
+    const container = document.getElementById("studioGalleryContainer");
+    const grid = document.getElementById("studioGalleryGrid");
+    const countEl = document.getElementById("studioGalleryCount");
+    const badge = document.getElementById("studioGalleryFolderBadge");
+
+    try {
+        const res = await fetch(`${API_BASE}/rpa/ai-studio/gallery?folder_name=${encodeURIComponent(folderName)}`);
+        const json = await res.json();
+        const data = json.data || {};
+        const items = data.items || [];
+
+        container.classList.remove("hidden");
+        badge.textContent = `Thư mục: ${folderName}`;
+        countEl.textContent = items.length;
+        grid.innerHTML = "";
+
+        if (items.length === 0) {
+            grid.innerHTML = `
+                <div class="col-span-full py-8 text-center text-slate-500 text-xs">
+                    <i class="fa-regular fa-folder-open text-3xl mb-2 block"></i>
+                    Thư mục '${folderName}' chưa có ảnh hoặc video nào. Hãy bấm 'Khởi Chạy AI Studio' để bắt đầu tạo!
+                </div>
+            `;
+            return;
+        }
+
+        items.forEach(item => {
+            const card = document.createElement("div");
+            card.className = "p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 hover:border-amber-500/40 transition";
+
+            let mediaPreview = "";
+            if (item.video) {
+                mediaPreview = `
+                    <div class="aspect-video w-full rounded-xl overflow-hidden bg-slate-950 border border-slate-800">
+                        <video src="${item.video.url}" controls class="w-full h-full object-cover"></video>
+                    </div>
+                `;
+            } else if (item.image) {
+                mediaPreview = `
+                    <div class="aspect-video w-full rounded-xl overflow-hidden bg-slate-950 border border-slate-800">
+                        <img src="${item.image.url}" alt="${item.image.filename}" class="w-full h-full object-cover">
+                    </div>
+                `;
+            }
+
+            let downloadButtons = "";
+            if (item.video) {
+                downloadButtons += `
+                    <a href="${item.video.url}" download="${item.video.filename}"
+                        class="flex-1 py-1.5 px-2.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-semibold text-center flex items-center justify-center gap-1 transition">
+                        <i class="fa-solid fa-download"></i> Tải Video (.mp4)
+                    </a>
+                `;
+            }
+            if (item.image) {
+                downloadButtons += `
+                    <a href="${item.image.url}" download="${item.image.filename}"
+                        class="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold text-center flex items-center justify-center gap-1 transition">
+                        <i class="fa-solid fa-image"></i> Ảnh gốc
+                    </a>
+                `;
+            }
+
+            card.innerHTML = `
+                ${mediaPreview}
+                <div class="flex items-center justify-between text-xs">
+                    <span class="font-bold text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-film text-amber-400"></i> Mục #${item.index}
+                    </span>
+                    <span class="text-[10px] text-slate-500 font-mono">${item.video ? item.video.size_mb + ' MB' : (item.image ? item.image.size_mb + ' MB' : '')}</span>
+                </div>
+                <div class="flex items-center gap-2 pt-1">
+                    ${downloadButtons}
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+
+    } catch (e) {
+        console.error("Lỗi tải gallery:", e);
+    }
+}
+

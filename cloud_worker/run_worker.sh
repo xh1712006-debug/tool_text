@@ -34,3 +34,4 @@ ollama pull ${MODEL_NAME}
 # 5. Mở tunnel ra ngoài Internet
 echo "-> Khởi tạo Cloudflare Tunnel..."
 cloudflared tunnel --url http://localhost:${PORT}
+

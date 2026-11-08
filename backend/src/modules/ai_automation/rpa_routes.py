@@ -285,3 +285,103 @@ async def generate_with_cloud_worker(payload: Dict[str, Any]):
             detail=f"Lỗi Cloud Worker: {str(e)}"
         )
 
+
+# --- CÁC ENDPOINT CHO AI STUDIO NỘI BỘ (TỰ TẠO ẢNH & VIDEO TRỰC TIẾP) ---
+
+@rpa_router.post("/ai-studio/test", summary="Kiểm tra kết nối GPU Worker của AI Studio")
+async def test_ai_studio_worker(payload: Dict[str, Any]):
+    """Kiểm tra xem máy chủ Cloud GPU có sẵn sàng sinh ảnh và video không."""
+    from src.modules.ai_automation.services.ai_studio_service import AIStudioService
+    worker_url = payload.get("worker_url", "")
+    result = await AIStudioService.test_connection(worker_url)
+    return success_response(data=result, message=result.get("message", "Đã kiểm tra kết nối."))
+
+
+@rpa_router.post("/ai-studio/generate-single", summary="Sinh 1 ảnh hoặc 1 video đơn lẻ qua AI Studio")
+async def generate_single_ai_studio(payload: Dict[str, Any]):
+    """Sinh thử 1 ảnh hoặc video từ prompt đơn lẻ."""
+    from src.modules.ai_automation.services.ai_studio_service import AIStudioService
+    worker_url = payload.get("worker_url", "")
+    prompt = payload.get("prompt", "")
+    aspect_ratio = payload.get("aspect_ratio", "16:9")
+    mode = payload.get("mode", "image")  # 'image' or 'pipeline'
+
+    if not worker_url or not prompt:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp worker_url và prompt.")
+
+    try:
+        img_res = await AIStudioService.generate_single_image(
+            worker_url=worker_url,
+            prompt=prompt,
+            aspect_ratio=aspect_ratio
+        )
+        vid_res = None
+        if mode == "pipeline" and img_res.get("image_base64"):
+            vid_res = await AIStudioService.generate_single_video(
+                worker_url=worker_url,
+                image_base64=img_res["image_base64"],
+                prompt=prompt
+            )
+
+        return success_response(
+            data={"image": img_res, "video": vid_res},
+            message="Đã tạo thành công qua AI Studio!"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@rpa_router.post("/ai-studio/batch/start", summary="Bắt đầu tạo hàng loạt ảnh và video nội bộ")
+def start_ai_studio_batch(payload: Dict[str, Any]):
+    """
+    Bắt đầu tiến trình tạo hàng loạt ảnh và video từ danh sách prompt.
+    Tự động lưu vào thư mục máy tính và không cần mở tab Chrome bên ngoài.
+    """
+    from src.modules.ai_automation.services.ai_studio_service import AIStudioService
+    worker_url = payload.get("worker_url", "")
+    prompts = payload.get("prompts", [])
+    folder_name = payload.get("folder_name", "prompts_video")
+    generate_video = payload.get("generate_video", True)
+    aspect_ratio = payload.get("aspect_ratio", "16:9")
+
+    if not worker_url:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp worker_url.")
+    if not prompts or not isinstance(prompts, list):
+        raise HTTPException(status_code=400, detail="Danh sách prompt không được rỗng.")
+
+    res = AIStudioService.start_batch(
+        worker_url=worker_url,
+        prompts=prompts,
+        folder_name=folder_name,
+        generate_video=generate_video,
+        aspect_ratio=aspect_ratio
+    )
+    if not res.get("started"):
+        raise HTTPException(status_code=409, detail=res.get("message"))
+
+    return success_response(data=res, message=res.get("message"))
+
+
+@rpa_router.get("/ai-studio/batch/status", summary="Lấy tiến độ tạo hàng loạt thời gian thực")
+def get_ai_studio_status():
+    """Lấy trạng thái tiến độ thời gian thực của AI Studio."""
+    from src.modules.ai_automation.services.ai_studio_service import AIStudioService
+    return success_response(data=AIStudioService.get_status(), message="Cập nhật trạng thái thành công.")
+
+
+@rpa_router.post("/ai-studio/batch/stop", summary="Dừng tiến trình AI Studio đang chạy")
+def stop_ai_studio_batch():
+    """Dừng tiến trình tạo hàng loạt AI Studio."""
+    from src.modules.ai_automation.services.ai_studio_service import AIStudioService
+    res = AIStudioService.stop_batch()
+    return success_response(data=res, message=res.get("message"))
+
+
+@rpa_router.get("/ai-studio/gallery", summary="Lấy danh sách ảnh và video đã tạo trong thư mục")
+def get_ai_studio_gallery(folder_name: str = "prompts_video"):
+    """Quét và lấy toàn bộ ảnh và video đã tạo trong thư mục."""
+    from src.modules.ai_automation.services.ai_studio_service import AIStudioService
+    res = AIStudioService.list_gallery(folder_name)
+    return success_response(data=res, message="Lấy danh sách thư viện media thành công.")
+
+

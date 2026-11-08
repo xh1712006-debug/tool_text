@@ -130,3 +130,4 @@ class CloudWorkerService:
             except Exception as e:
                 logger.error(f"Lỗi toàn bộ kết nối Cloud Worker: {e}")
                 raise RuntimeError(f"Lỗi khi gửi yêu cầu tới Cloud Worker: {str(e)}")
+

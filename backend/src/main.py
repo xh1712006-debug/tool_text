@@ -30,6 +30,8 @@ logger = logging.getLogger("TuneTextApp")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+DOWNLOADS_DIR = os.path.join(os.path.dirname(BASE_DIR), "downloads")
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
@@ -77,9 +79,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Phục vụ tệp tĩnh (Frontend Assets: CSS, JS) tích hợp trực tiếp trong cùng hệ thống
+# 2. Phục vụ tệp tĩnh (Frontend Assets & Tệp Downloads Media) tích hợp trực tiếp trong cùng hệ thống
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+if os.path.exists(DOWNLOADS_DIR):
+    app.mount("/downloads", StaticFiles(directory=DOWNLOADS_DIR), name="downloads")
 
 # 3. Đăng ký các Exception Handlers chuẩn hóa phản hồi lỗi
 app.add_exception_handler(HTTPException, http_exception_handler)
