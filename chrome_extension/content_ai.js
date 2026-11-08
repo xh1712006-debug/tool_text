@@ -12,6 +12,70 @@
 
   console.log("[Tune-Text AI Prompter] Content Script đã nạp vào tab AI (Chế độ chạy ngầm kích hoạt)!");
 
+  // TỰ ĐỘNG BẮT LINK CLOUDFLARE TRÊN GOOGLE COLAB VÀ ĐỒNG BỘ VỀ TUNE-TEXT (KHÔNG CẦN DÁN TAY)
+  function findCloudflareUrlInDom(root = document) {
+    try {
+      const bodyText = root.body ? (root.body.innerText || "") : (root.textContent || "");
+      const match = bodyText.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+      if (match) return match[0];
+
+      const elements = root.querySelectorAll ? root.querySelectorAll("pre, code, a, div.output_text, colab-terminal-output, span") : [];
+      for (const el of elements) {
+        const txt = el.textContent || "";
+        const m = txt.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+        if (m) return m[0];
+      }
+
+      const iframes = root.querySelectorAll ? root.querySelectorAll("iframe") : [];
+      for (const ifr of iframes) {
+        try {
+          const doc = ifr.contentDocument || ifr.contentWindow?.document;
+          if (doc) {
+            const nested = findCloudflareUrlInDom(doc);
+            if (nested) return nested;
+          }
+        } catch (e) {}
+      }
+
+      const all = root.querySelectorAll ? root.querySelectorAll("*") : [];
+      for (const el of all) {
+        if (el.shadowRoot) {
+          const nested = findCloudflareUrlInDom(el.shadowRoot);
+          if (nested) return nested;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  if (window.location.hostname.includes("colab.research.google.com")) {
+    let lastSyncedUrl = "";
+    
+    function scanAndSyncColabUrl() {
+      const foundUrl = findCloudflareUrlInDom(document);
+      if (foundUrl && foundUrl !== lastSyncedUrl) {
+        lastSyncedUrl = foundUrl;
+        console.log("[Tune-Text Colab Auto-Sync] Phát hiện URL Cloudflare mới:", lastSyncedUrl);
+        chrome.runtime.sendMessage({
+          action: "SYNC_STUDIO_URL",
+          url: lastSyncedUrl
+        }, () => { if (chrome.runtime.lastError) {} });
+      }
+      return foundUrl;
+    }
+
+    setInterval(scanAndSyncColabUrl, 2000);
+
+    // Lắng nghe khi Tune-Text yêu cầu quét tab Colab
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (msg.action === "QUERY_COLAB_URL") {
+        const currentUrl = scanAndSyncColabUrl();
+        sendResponse({ url: currentUrl });
+        return true;
+      }
+    });
+  }
+
   // Dừng bất kỳ tiến trình cũ nào nếu có
   if (window.__tuneTextStopPrevious) {
     try { window.__tuneTextStopPrevious(); } catch (e) { }

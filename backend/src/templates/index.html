@@ -946,9 +946,13 @@
                         <div class="flex flex-col sm:flex-row gap-2">
                             <div class="relative flex-1">
                                 <i class="fa-solid fa-link absolute left-3.5 top-3 text-slate-500 text-xs"></i>
-                                <input type="url" id="studioWorkerUrlInput" placeholder="Ví dụ: https://random-name.trycloudflare.com"
+                                <input type="url" id="studioWorkerUrlInput" placeholder="Tự động đồng bộ từ Colab hoặc dán: https://random.trycloudflare.com"
                                     class="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500">
                             </div>
+                            <button type="button" onclick="requestColabUrlFromExtension()" title="Tự động phát hiện link từ tab Google Colab đang mở bên cạnh (Không cần dán tay)"
+                                class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-semibold text-xs transition flex items-center justify-center gap-1.5 whitespace-nowrap shadow-sm">
+                                <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> <span>Tự Lấy Link Colab</span>
+                            </button>
                             <button type="button" onclick="testStudioWorkerConnection()"
                                 class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 whitespace-nowrap">
                                 <i class="fa-solid fa-bolt"></i> <span>Kiểm Tra Kết Nối GPU</span>

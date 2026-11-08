@@ -1841,6 +1841,31 @@ async function startCloudWorkerExecution(promptsList, options) {
 let studioPollTimer = null;
 let isStudioRunning = false;
 
+function requestColabUrlFromExtension() {
+    showToast("Đang quét tìm link từ tab Google Colab...", "info");
+    window.dispatchEvent(new CustomEvent("TUNE_TEXT_REQUEST_COLAB_URL"));
+}
+
+// Tự động nhận diện và nạp URL từ Colab thông qua Chrome Extension (Không cần dán tay)
+window.addEventListener("TUNE_TEXT_AUTO_FILL_STUDIO_URL", (e) => {
+    const url = e.detail?.url;
+    const notFound = e.detail?.notFound;
+    const input = document.getElementById("studioWorkerUrlInput");
+
+    if (url && input) {
+        const isNew = (input.value !== url);
+        input.value = url;
+        localStorage.setItem("tunetext_studio_worker_url", url);
+        localStorage.setItem("tunetext_cloud_worker_url", url);
+        if (isNew) {
+            showToast("⚡ Đã tự động nhận diện và nạp link GPU từ Colab!", "success");
+            testStudioWorkerConnection();
+        }
+    } else if (notFound) {
+        showToast("Chưa thấy link trên Colab. Hãy chắc chắn Colab đã chạy xong ô cuối!", "warning");
+    }
+});
+
 function initStudioUI() {
     // Khôi phục URL worker đã lưu
     const savedUrl = localStorage.getItem("tunetext_studio_worker_url") || localStorage.getItem("tunetext_cloud_worker_url") || "";
@@ -1848,6 +1873,9 @@ function initStudioUI() {
     if (input && !input.value) {
         input.value = savedUrl;
     }
+
+    // Tự động yêu cầu tiện ích quét URL từ Colab nếu có tab đang mở
+    window.dispatchEvent(new CustomEvent("TUNE_TEXT_REQUEST_COLAB_URL"));
 
     const textarea = document.getElementById("studioPromptsText");
     if (textarea && !textarea.dataset.listenerAttached) {

@@ -114,6 +114,29 @@
         detail: message.data
       }));
     }
+
+    // Tự động nhận URL Colab từ Background
+    if (message.action === "AUTO_FILL_STUDIO_URL") {
+      console.log("[Tune-Text Extension] Nhận AUTO_FILL_STUDIO_URL:", message.url);
+      window.dispatchEvent(new CustomEvent("TUNE_TEXT_AUTO_FILL_STUDIO_URL", {
+        detail: { url: message.url }
+      }));
+    }
+  });
+
+  // Lắng nghe yêu cầu lấy URL Colab từ trang Tune-Text
+  window.addEventListener("TUNE_TEXT_REQUEST_COLAB_URL", () => {
+    chrome.runtime.sendMessage({ action: "GET_COLAB_URL" }, (response) => {
+      if (response && response.url) {
+        window.dispatchEvent(new CustomEvent("TUNE_TEXT_AUTO_FILL_STUDIO_URL", {
+          detail: { url: response.url }
+        }));
+      } else {
+        window.dispatchEvent(new CustomEvent("TUNE_TEXT_AUTO_FILL_STUDIO_URL", {
+          detail: { url: null, notFound: true }
+        }));
+      }
+    });
   });
 })();
 

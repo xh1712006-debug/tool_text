@@ -12,6 +12,58 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return;
   }
 
+  // TỰ ĐỘNG ĐỒNG BỘ URL CLOUDFLARE TỪ TAB COLAB VỀ TUNE-TEXT (ZERO-PASTE)
+  if (request.action === "SYNC_STUDIO_URL") {
+    const workerUrl = request.url;
+    console.log("[Tune-Text BG] Nhận URL Cloudflare từ Colab:", workerUrl);
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ tune_text_studio_worker_url: workerUrl });
+    }
+    // Phát tới tất cả các tab (đặc biệt là tab Tune-Text Platform)
+    chrome.tabs.query({}, (tabs) => {
+      (tabs || []).forEach((t) => {
+        try {
+          chrome.tabs.sendMessage(t.id, {
+            action: "AUTO_FILL_STUDIO_URL",
+            url: workerUrl
+          }, () => { if (chrome.runtime.lastError) {} });
+        } catch (e) {}
+      });
+    });
+    sendResponse({ synced: true });
+    return true;
+  }
+
+  // Lấy URL Colab theo yêu cầu từ Tune-Text
+  if (request.action === "GET_COLAB_URL") {
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(["tune_text_studio_worker_url"], (res) => {
+        const saved = res ? res.tune_text_studio_worker_url : null;
+        if (saved) {
+          sendResponse({ url: saved });
+        } else {
+          // Tìm trong tab Colab đang mở
+          chrome.tabs.query({ url: "*://colab.research.google.com/*" }, (colabTabs) => {
+            if (colabTabs && colabTabs.length > 0) {
+              chrome.tabs.sendMessage(colabTabs[0].id, { action: "QUERY_COLAB_URL" }, (colabRes) => {
+                const url = colabRes ? colabRes.url : null;
+                if (url && chrome.storage && chrome.storage.local) {
+                  chrome.storage.local.set({ tune_text_studio_worker_url: url });
+                }
+                sendResponse({ url: url });
+              });
+            } else {
+              sendResponse({ url: null });
+            }
+          });
+        }
+      });
+    } else {
+      sendResponse({ url: null });
+    }
+    return true;
+  }
+
   // Lệnh dừng Robot hoàn toàn từ Web UI
   if (request.action === "STOP_AUTOMATION") {
     console.log("[Tune-Text BG] Nhận lệnh dừng Robot! Đang phát lệnh STOP_PROMPTS tới tất cả các tab...");
