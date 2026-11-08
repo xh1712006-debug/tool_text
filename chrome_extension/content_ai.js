@@ -213,7 +213,7 @@
   function isAIGenerating(customStopSelector = "") {
     if (findStopButton(customStopSelector)) return true;
 
-    // 1. Selector streaming, spinner và loading indicator
+    // 1. Selector streaming, spinner và loading indicator (Hỗ trợ ChatGPT, Claude, Gemini, DeepSeek, Muse...)
     const streamingSelectors = [
       ".result-streaming",
       "[data-is-streaming='true']",
@@ -224,7 +224,12 @@
       "[class*='dot-flashing']",
       "svg.animate-spin",
       "[data-state='loading']",
-      "[aria-busy='true']"
+      "[aria-busy='true']",
+      "[class*='loader']",
+      "[class*='spinner']",
+      "[class*='animate-spin']",
+      "[class*='loading']",
+      "[class*='dots']"
     ];
 
     for (const s of streamingSelectors) {
@@ -234,26 +239,38 @@
       } catch (e) { }
     }
 
-    // 2. Nhận diện các từ khóa trạng thái đặc thù của Muse.ai khi đang tạo ảnh, collage, video
+    // 2. Nhận diện các từ khóa trạng thái đặc thù của Muse.ai & các AI Studio (TreeWalker nhanh < 2ms trên toàn bộ DOM)
     try {
-      const allStatusEls = document.querySelectorAll("div, span, p");
-      for (let i = allStatusEls.length - 1; i >= Math.max(0, allStatusEls.length - 100); i--) {
-        const el = allStatusEls[i];
-        if (el && el.children.length === 0) {
-          const txt = (el.textContent || "").trim();
-          if (
-            txt === "Creating collage" ||
-            txt === "Creating image" ||
-            txt === "Creating video" ||
-            txt === "Rendering video" ||
-            txt === "Generating..." ||
-            txt === "Creating..." ||
-            txt.startsWith("Creating collage") ||
-            txt.startsWith("Creating image") ||
-            txt.startsWith("Creating video") ||
-            txt.startsWith("Rendering")
-          ) {
-            if (el.offsetParent !== null) return true;
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      );
+      let node;
+      while ((node = walker.nextNode())) {
+        const txt = (node.nodeValue || "").trim();
+        if (!txt) continue;
+        if (
+          txt.includes("Creating collage") ||
+          txt.includes("Creating image") ||
+          txt.includes("Creating video") ||
+          txt.includes("Rendering video") ||
+          txt.includes("Generating video") ||
+          txt.includes("Generating image") ||
+          txt.includes("Generating...") ||
+          txt.includes("Creating...") ||
+          txt.includes("Rendering...") ||
+          txt.includes("Processing...") ||
+          txt.includes("Đang tạo") ||
+          txt.includes("Đang kết xuất") ||
+          txt.includes("Đang xử lý") ||
+          txt.startsWith("Creating ") ||
+          txt.startsWith("Rendering ")
+        ) {
+          const parent = node.parentElement;
+          if (parent && parent.offsetParent !== null) {
+            return true;
           }
         }
       }
@@ -441,17 +458,19 @@
     return true;
   }
 
-  // 10. Chờ AI phản hồi xong hoàn toàn (Dựa trên cả nút Stop và độ ổn định văn bản)
   // 10. Chờ AI phản hồi xong hoàn toàn (Hỗ trợ cả văn bản, sinh hình ảnh và tạo video)
-  async function waitForAIFinish(maxWaitMs = 300000, customStopSelector = "") {
+  async function waitForAIFinish(maxWaitMs = 600000, customStopSelector = "") {
     const start = Date.now();
-    let isGenerating = false;
+    let hasStarted = false;
 
-    // Bước A: Chờ tối đa 15 giây để AI BẮT ĐẦU xử lý (tránh trường hợp mạng lag chưa kịp hiện spinner / 'Creating collage')
-    for (let i = 0; i < 30; i++) {
+    // Chờ tối thiểu 2.5s đầu tiên để AI tiếp nhận prompt qua mạng và kịp hiển thị loading/spinner
+    await new Promise(r => setTimeout(r, 2500));
+
+    // Bước A: Chờ tối đa 25 giây để AI BẮT ĐẦU xử lý (tránh trường hợp mạng lag chưa kịp hiện spinner / 'Creating collage')
+    for (let i = 0; i < 50; i++) {
       if (stopRequested) return;
       if (isAIGenerating(customStopSelector)) {
-        isGenerating = true;
+        hasStarted = true;
         break;
       }
       await new Promise(r => setTimeout(r, 500));
@@ -464,14 +483,15 @@
 
       const generatingNow = isAIGenerating(customStopSelector);
       if (generatingNow) {
+        hasStarted = true;
         stableCount = 0;
         await new Promise(r => setTimeout(r, 1000));
         continue;
       }
 
       stableCount++;
-      if (stableCount >= 3) {
-        // Đã không còn bất kỳ spinner, loader hay trạng thái 'Creating...' trong 3 giây liên tiếp!
+      // Đảm bảo không còn bất kỳ spinner, loader hay trạng thái 'Creating...' trong 4 giây liên tiếp
+      if (stableCount >= 4) {
         break;
       }
       await new Promise(r => setTimeout(r, 1000));
