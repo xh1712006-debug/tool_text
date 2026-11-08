@@ -1853,14 +1853,11 @@ window.addEventListener("TUNE_TEXT_AUTO_FILL_STUDIO_URL", (e) => {
     const input = document.getElementById("studioWorkerUrlInput");
 
     if (url && input) {
-        const isNew = (input.value !== url);
         input.value = url;
         localStorage.setItem("tunetext_studio_worker_url", url);
         localStorage.setItem("tunetext_cloud_worker_url", url);
-        if (isNew) {
-            showToast("⚡ Đã tự động nhận diện và nạp link GPU từ Colab!", "success");
-            testStudioWorkerConnection();
-        }
+        showToast(`⚡ Đã tìm thấy link Colab: ${url}`, "success");
+        testStudioWorkerConnection();
     } else if (notFound) {
         showToast("Chưa thấy link trên Colab. Hãy chắc chắn Colab đã chạy xong ô cuối!", "warning");
     }
