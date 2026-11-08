@@ -30,6 +30,12 @@ def refresh_token(payload: TokenRefreshRequest, db: Session = Depends(get_db)):
     return AuthController.refresh_access_token(payload, db)
 
 
+@cores_router.get("/auth/permanent-session", summary="Lấy phiên làm việc vĩnh viễn (Auto-Login)")
+def get_permanent_session(db: Session = Depends(get_db)):
+    """Tự động cấp phiên đăng nhập vĩnh viễn cho tài khoản Quản trị viên để máy chủ luôn sẵn sàng chạy 24/7."""
+    return AuthController.get_permanent_session(db)
+
+
 # --- Phân hệ Người dùng (User Endpoints) ---
 @cores_router.get("/users/me", summary="Lấy thông tin tài khoản hiện tại")
 def get_current_profile(current_user: User = Depends(get_current_user)):

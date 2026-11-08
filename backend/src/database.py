@@ -62,7 +62,9 @@ def seed_initial_data(db: Session) -> None:
         db.refresh(user_role)
 
     # 2. Khởi tạo tài khoản Super Admin với Token Vô Hạn (admin12345 / admin12345)
-    admin12345_user = db.query(User).filter(User.email == "admin12345@tunetext.local").first()
+    admin12345_user = db.query(User).filter(
+        (User.email == "admin12345@tunetext.local") | (User.email == "admin12345")
+    ).first()
     if not admin12345_user:
         admin12345_user = User(
             email="admin12345@tunetext.local",
@@ -72,8 +74,10 @@ def seed_initial_data(db: Session) -> None:
         )
         db.add(admin12345_user)
         db.commit()
+        db.refresh(admin12345_user)
     else:
         admin12345_user.password_hash = hash_password("admin12345")
+        admin12345_user.role_id = admin_role.id
         db.commit()
 
     # Tài khoản phụ admin@tunetext.local
@@ -89,6 +93,36 @@ def seed_initial_data(db: Session) -> None:
         db.commit()
     else:
         admin_user.password_hash = hash_password("admin12345")
+        admin_user.role_id = admin_role.id
+        db.commit()
+
+    # Tài khoản admin123 (xh1712006@gmail.com)
+    owner_user = db.query(User).filter(User.email == "xh1712006@gmail.com").first()
+    if not owner_user:
+        owner_user = User(
+            email="xh1712006@gmail.com",
+            password_hash=hash_password("admin123"),
+            full_name="Quản Trị Viên (admin123)",
+            role_id=admin_role.id
+        )
+        db.add(owner_user)
+        db.commit()
+
+    # Đảm bảo phiên vĩnh viễn (Session 100 năm) luôn sẵn sàng trong CSDL
+    from src.cores.models.session import SessionModel
+    from src.utils.security import create_refresh_token
+    from datetime import datetime, timedelta, timezone
+
+    existing_session = db.query(SessionModel).filter(SessionModel.user_id == admin12345_user.id).first()
+    if not existing_session:
+        expires_delta = timedelta(days=36500)
+        perm_refresh = create_refresh_token(subject=admin12345_user.id, expires_delta=expires_delta)
+        session_entry = SessionModel(
+            token=perm_refresh,
+            user_id=admin12345_user.id,
+            expires_at=datetime.now(timezone.utc) + expires_delta
+        )
+        db.add(session_entry)
         db.commit()
 
     # 3. Khởi tạo danh sách AI Presets

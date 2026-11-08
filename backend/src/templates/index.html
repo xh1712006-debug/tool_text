@@ -105,16 +105,15 @@
             <div id="loginWarning"
                 class="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div class="flex items-center gap-3">
-                    <i class="fa-solid fa-shield-halved text-indigo-400 text-lg"></i>
+                    <i class="fa-solid fa-crown text-amber-400 text-lg"></i>
                     <p class="text-sm text-indigo-200">
-                        Hệ thống lưu trữ trên PostgreSQL cục bộ an toàn và bảo mật 100%. Hãy <button
-                            onclick="openAuthModal('login')" class="underline font-semibold hover:text-white">đăng
-                            nhập</button> để lưu và quản lý lịch sử tác vụ.
+                        Hệ thống đã tích hợp sẵn tài khoản <strong>admin12345</strong> (Token Vô Hạn 100 Năm). Bấm vào đây để <button
+                            onclick="loginInfiniteAccount()" class="underline font-bold text-amber-300 hover:text-white">kích hoạt ngay</button> hoặc chuyển sang tài khoản khác.
                     </p>
                 </div>
-                <button onclick="openAuthModal('login')"
-                    class="text-xs font-semibold px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition whitespace-nowrap">
-                    Đăng nhập ngay
+                <button onclick="loginInfiniteAccount()"
+                    class="text-xs font-semibold px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white transition whitespace-nowrap shadow-lg shadow-amber-600/25 flex items-center gap-1.5">
+                    <i class="fa-solid fa-bolt"></i> Kích hoạt Quản Trị Viên VIP
                 </button>
             </div>
 

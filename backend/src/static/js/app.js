@@ -121,24 +121,39 @@ async function fetchAPI(endpoint, options = {}) {
 
 // Đăng nhập tài khoản VIP Token Vô Hạn (100 Năm)
 async function loginInfiniteAccount() {
-    const email = "admin12345";
-    const password = "admin12345";
+    sessionStorage.removeItem("tunetext_manual_logout");
     try {
-        const res = await fetch(`${API_BASE}/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password })
-        });
+        // Ưu tiên gọi endpoint kích hoạt phiên vĩnh viễn trực tiếp
+        const res = await fetch(`${API_BASE}/auth/permanent-session`);
         const json = await res.json();
-        if (json.success) {
+        if (json.success && json.data) {
             saveAuthSession(json.data.access_token, json.data.refresh_token, json.data.user);
             showToast("👑 Đã đăng nhập tài khoản VIP admin12345! Token vô hạn (100 năm)!", "success");
             closeAuthModal();
             return;
         }
-        showToast("Lỗi đăng nhập: " + (json.error?.message || "Không xác định"), "error");
+        showToast("Lỗi đăng nhập: " + (json.message || "Không xác định"), "error");
     } catch (err) {
         showToast("Lỗi kết nối: " + err.message, "error");
+    }
+}
+
+// Tự động kích hoạt phiên đăng nhập vĩnh viễn cho máy chủ (Out-of-the-box)
+async function autoLoginPermanentAdmin() {
+    if (sessionStorage.getItem("tunetext_manual_logout") === "true") {
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/auth/permanent-session`);
+        if (res.ok) {
+            const json = await res.json();
+            if (json.success && json.data) {
+                saveAuthSession(json.data.access_token, json.data.refresh_token, json.data.user);
+                showToast("⚡ Đã kích hoạt tài khoản Quản Trị Viên vĩnh viễn (admin12345)!", "success");
+            }
+        }
+    } catch (e) {
+        console.warn("Không thể tự động kích hoạt phiên vĩnh viễn:", e);
     }
 }
 
@@ -246,6 +261,7 @@ function logout() {
     localStorage.removeItem("tunetext_token");
     localStorage.removeItem("tunetext_refresh_token");
     localStorage.removeItem("tunetext_user");
+    sessionStorage.setItem("tunetext_manual_logout", "true");
     updateAuthUI();
     showToast("Đã đăng xuất tài khoản.");
 }
@@ -568,6 +584,9 @@ function escapeHtml(string) {
 // Khởi chạy
 document.addEventListener("DOMContentLoaded", () => {
     updateAuthUI();
+    if (!state.token || !state.user) {
+        autoLoginPermanentAdmin();
+    }
     checkSystemHealth();
     loadAIPresets();
     initRPADragAndDrop();

@@ -159,3 +159,66 @@ class AuthController:
             data={"access_token": new_access_token, "token_type": "bearer"},
             message="Cấp mới AccessToken thành công."
         )
+
+    @staticmethod
+    def get_permanent_session(db: Session):
+        """
+        Tự động trả về phiên đăng nhập vĩnh viễn (100 năm) cho tài khoản Quản Trị Viên (admin12345).
+        Tự động tạo vai trò và người dùng nếu CSDL chưa có (Out-of-the-box).
+        """
+        # 1. Đảm bảo vai trò ADMIN tồn tại
+        admin_role = db.query(Role).filter(Role.role_name == "ADMIN").first()
+        if not admin_role:
+            admin_role = Role(role_name="ADMIN", description="Quản trị viên tối cao với token vĩnh viễn")
+            db.add(admin_role)
+            db.commit()
+            db.refresh(admin_role)
+
+        # 2. Đảm bảo tài khoản admin12345 tồn tại
+        user = db.query(User).filter(
+            (User.email == "admin12345@tunetext.local") | (User.email == "admin12345")
+        ).first()
+
+        if not user:
+            user = User(
+                email="admin12345@tunetext.local",
+                password_hash=hash_password("admin12345"),
+                full_name="Quản Trị Viên (admin12345)",
+                role_id=admin_role.id
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        # 3. Tạo token vĩnh viễn (100 năm = 36500 ngày)
+        expires_delta = timedelta(days=36500)
+        access_token = create_access_token(subject=user.id, role="ADMIN", expires_delta=expires_delta)
+        refresh_token = create_refresh_token(subject=user.id, expires_delta=expires_delta)
+
+        # 4. Lưu session vào CSDL
+        expires_at = datetime.now(timezone.utc) + expires_delta
+        session_entry = SessionModel(
+            token=refresh_token,
+            user_id=user.id,
+            expires_at=expires_at
+        )
+        db.add(session_entry)
+        db.commit()
+
+        user_data = {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": "ADMIN"
+        }
+
+        return success_response(
+            data={
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "expires_in_days": 36500,
+                "user": user_data
+            },
+            message="Kích hoạt phiên làm việc vĩnh viễn cho tài khoản Quản Trị Viên thành công."
+        )
