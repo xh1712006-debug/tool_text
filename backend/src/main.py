@@ -30,7 +30,7 @@ logger = logging.getLogger("TuneTextApp")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-DOWNLOADS_DIR = os.path.join(os.path.dirname(BASE_DIR), "downloads")
+DOWNLOADS_DIR = os.path.join(BASE_DIR, "downloads")
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
