@@ -556,81 +556,56 @@
     return true;
   }
 
-  // 10a. Chờ AI tạo xong HÌNH ẢNH / COLLAGE hoàn toàn (Bước 1)
-  async function waitForImageGeneration(initialImages, maxWaitMs = 360000, customStopSelector = "") {
+  // 10a. Chờ AI tạo đủ số lượng HÌNH ẢNH của đợt này (Ví dụ: gửi 4 prompt -> chờ ra đủ 4 ảnh)
+  async function waitForImageGeneration(initialImages, expectedCount = 1, maxWaitMs = 360000, customStopSelector = "") {
     const start = Date.now();
-    let hasStarted = false;
-    let newImageFound = false;
+    let stableCount = 0;
 
-    // Chờ tối thiểu 3 giây đầu để AI tiếp nhận prompt qua mạng và kịp hiển thị loading/spinner
+    // Chờ tối thiểu 3 giây đầu để AI tiếp nhận prompt qua mạng
     await new Promise(r => setTimeout(r, 3000));
 
-    // Bước A: Chờ tối đa 30 giây để AI BẮT ĐẦU xử lý
-    for (let i = 0; i < 60; i++) {
-      if (stopRequested) return;
-      if (isAIGenerating(customStopSelector)) {
-        hasStarted = true;
-        break;
-      }
-      const curImgs = getVisibleImageUrls();
-      for (const u of curImgs) {
-        if (!initialImages.has(u)) {
-          hasStarted = true;
-          break;
-        }
-      }
-      if (hasStarted) break;
-      await new Promise(r => setTimeout(r, 500));
-    }
-
-    // Bước B: Chờ cho tới khi AI sinh xong toàn bộ ảnh
-    let stableCount = 0;
+    // Bước B: Chờ cho tới khi AI sinh đủ số lượng ảnh
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return;
 
-      // 1. Kiểm tra xem đã có ảnh mới xuất hiện và nạp xong khung hình chưa
-      let completedImageFound = false;
-      let newImageCount = 0;
+      // 1. Đếm số lượng ảnh MỚI đã xuất hiện và nạp xong khung hình
+      let newImagesLoadedCount = 0;
       document.querySelectorAll("img").forEach(img => {
         if (img.closest && img.closest("#tune-text-hud")) return;
         const src = img.currentSrc || img.src || img.getAttribute("src");
         if (src && !initialImages.has(src.trim()) && isElementVisible(img)) {
           if (img.complete && (img.naturalWidth > 40 || img.naturalHeight > 40)) {
-            completedImageFound = true;
-            newImageCount++;
+            newImagesLoadedCount++;
           }
         }
       });
 
       // 2. Kiểm tra xem có spinner thực tế nào đang quay không
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
-      const generatingNow = isAIGenerating(customStopSelector);
+      const isGenerating = isAIGenerating(customStopSelector);
 
-      // NẾU ĐÃ CÓ ẢNH MỚI XUẤT HIỆN VÀ KHÔNG CÒN SPINNER QUAY:
-      if (completedImageFound && !hasActiveSpinner) {
-        stableCount++;
-        if (stableCount >= 2) {
-          console.log(`[Tune-Text] ✅ Đã tìm thấy ${newImageCount} ảnh mới tạo xong 100%! Chuyển ngay sang Bước 2 (Gõ câu lệnh tạo video).`);
-          break;
+      // Cập nhật tiến độ trực quan lên thanh HUD
+      updateHUD(
+        `⏳ Đang chờ tạo đủ ${expectedCount} ảnh... (Đã có ${newImagesLoadedCount}/${expectedCount} ảnh)`,
+        null, null, "", false
+      );
+
+      // NẾU ĐÃ RA ĐỦ HOẶC VƯỢT SỐ LƯỢNG ẢNH CỦA ĐỢT NÀY (Ví dụ: 4/4 ảnh):
+      if (newImagesLoadedCount >= expectedCount) {
+        if (!hasActiveSpinner && !isGenerating) {
+          stableCount++;
+          if (stableCount >= 2) {
+            console.log(`[Tune-Text] ✅ ĐÃ TẠO ĐỦ ${newImagesLoadedCount}/${expectedCount} ẢNH MỚI! Chuyển ngay sang Bước 2.`);
+            break;
+          }
+        } else {
+          stableCount = 0;
         }
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
-
-      // NẾU AI VẪN ĐANG XỬ LÝ (Có spinner hoặc trạng thái generating):
-      if (generatingNow || hasActiveSpinner) {
-        hasStarted = true;
+      } else {
+        // Chưa đủ số lượng ảnh mong muốn, kiên nhẫn chờ AI sinh tiếp
         stableCount = 0;
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
       }
 
-      stableCount++;
-      // Nếu không có spinner và AI rảnh rỗi trong 4 giây liên tiếp => chuyển bước an toàn
-      if (stableCount >= 4) {
-        console.log(`[Tune-Text] AI đã rảnh rỗi ${stableCount}s. Chuyển sang Bước 2!`);
-        break;
-      }
       await new Promise(r => setTimeout(r, 1000));
     }
 
@@ -658,77 +633,87 @@
     return false;
   }
 
-  // 10b. Chờ AI xử lý và kết xuất VIDEO xong hoàn toàn (Bước 2)
-  async function waitForVideoGeneration(initialVideos, maxWaitMs = 600000, customStopSelector = "") {
+  // 10b. Chờ AI tạo đủ số lượng VIDEO của đợt này (Ví dụ: đợt 4 video -> chờ ra đủ 4 video mới)
+  async function waitForVideoGeneration(initialVideos, expectedCount = 1, maxWaitMs = 600000, customStopSelector = "") {
     const start = Date.now();
-    let readyVideoFound = false;
-    let foundVideoUrl = null;
+    let stableCount = 0;
 
     // Chờ tối thiểu 4 giây đầu để lệnh gửi đi và AI bắt đầu quá trình tạo video
     await new Promise(r => setTimeout(r, 4000));
 
     // Vòng lặp chờ VIDEO:
-    // TUYỆT ĐỐI CHỈ HOÀN THÀNH KHI ĐÃ CÓ VIDEO MỚI VÀ VIDEO ĐÓ PHÁT ĐƯỢC!
-    let stableCount = 0;
+    // TUYỆT ĐỐI CHỈ HOÀN THÀNH KHI ĐÃ CÓ ĐỦ SỐ LƯỢNG VIDEO MỚI (Ví dụ: 4/4 video)!
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return null;
 
-      // 1. Quét tìm video THỰC SỰ mới (loại trừ toàn bộ ảnh PNG/JPG)
-      let curReady = false;
+      // 1. Quét tìm tất cả các VIDEO MỚI
+      const foundNewVideos = new Set();
+
+      // a) Quét qua thẻ <video>
       document.querySelectorAll("video").forEach(v => {
         if (v.closest && v.closest("#tune-text-hud")) return;
         const s = v.currentSrc || v.src || v.querySelector("source")?.src;
         if (s && isVideoUrl(s) && !initialVideos.has(s.trim()) && isElementVisible(v)) {
-          // Video phải load được metadata hoặc thời lượng > 0
-          if (v.readyState >= 2 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
-            curReady = true;
-            readyVideoFound = true;
-            foundVideoUrl = s.trim();
+          if (v.readyState >= 1 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
+            foundNewVideos.add(s.trim());
           }
         }
       });
 
-      // Quét thẻ <a> có link VIDEO (.mp4, .webm) - TUYỆT ĐỐI KHÔNG LẤY ẢNH (.png, .jpg)
+      // b) Quét qua thẻ <a> link video
       document.querySelectorAll("a[href*='.mp4'], a[href*='.webm'], a[download*='.mp4'], a[download*='.webm']").forEach(a => {
         if (a.closest && a.closest("#tune-text-hud")) return;
         const href = a.href;
         if (href && isVideoUrl(href) && !initialVideos.has(href.trim()) && isElementVisible(a)) {
-          curReady = true;
-          readyVideoFound = true;
-          foundVideoUrl = href.trim();
+          foundNewVideos.add(href.trim());
         }
       });
 
-      // 2. Kiểm tra các dấu hiệu AI đang xử lý (Searching memory, spinner, ba chấm...)
+      // c) Quét qua các thẻ video card trên giao diện Muse.ai (các thẻ có nút Play ▶ trong tab Video)
+      let customCardCount = 0;
+      document.querySelectorAll("[class*='video'], [class*='media'], div[role='article']").forEach(el => {
+        if (el.closest && el.closest("#tune-text-hud")) return;
+        const hasPlayBtn = el.querySelector && (
+          el.querySelector("svg polygon, svg path[d*='M'], [class*='play'], [aria-label*='play' i]") ||
+          (el.innerText && el.innerText.includes("▶"))
+        );
+        if (hasPlayBtn && isElementVisible(el)) {
+          customCardCount++;
+        }
+      });
+
+      const currentNewVideoCount = Math.max(foundNewVideos.size, customCardCount);
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
       const isGenerating = isAIGenerating(customStopSelector);
 
-      // NẾU ĐÃ TÌM THẤY VIDEO MỚI VÀ VIDEO ĐÓ ĐÃ HOÀN TẤT:
-      if (curReady && !hasActiveSpinner && !isGenerating) {
-        stableCount++;
-        if (stableCount >= 3) {
-          console.log(`[Tune-Text] ✅ ĐÃ CÓ VIDEO MỚI HOÀN THIỆN! URL: ${foundVideoUrl}. Bắt đầu tải.`);
-          break;
-        }
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
-
-      // NẾU CHƯA CÓ VIDEO MỚI: BẮT BUỘC PHẢI TIẾP TỤC CHỜ!
-      // Cập nhật trạng thái hiển thị trên HUD để người dùng biết AI đang làm video
+      // Cập nhật tiến độ trực tiếp lên HUD: ví dụ "Đang chờ tạo đủ 4 video... (Đã có 2/4 video)"
       const elapsedSec = Math.floor((Date.now() - start) / 1000);
       updateHUD(
-        `⏳ Đang chờ AI kết xuất video... [${elapsedSec}s] (Vui lòng không tắt tab)`,
+        `⏳ Đang chờ tạo đủ ${expectedCount} video... (Đã có ${currentNewVideoCount}/${expectedCount}) [${elapsedSec}s]`,
         null, null, "", false
       );
 
-      // Tuyệt đối KHÔNG ngắt sớm khi chưa có video!
+      // NẾU ĐÃ RA ĐỦ HOẶC VƯỢT SỐ LƯỢNG VIDEO CỦA ĐỢT NÀY (Ví dụ: 4/4 video):
+      if (currentNewVideoCount >= expectedCount) {
+        if (!hasActiveSpinner && !isGenerating) {
+          stableCount++;
+          if (stableCount >= 2) {
+            console.log(`[Tune-Text] ✅ ĐÃ RA ĐỦ ${currentNewVideoCount}/${expectedCount} VIDEO MỚI! Chuyển sang Bước 3 (Tải video).`);
+            break;
+          }
+        } else {
+          stableCount = 0;
+        }
+      } else {
+        // Chưa đủ số lượng video: tiếp tục kiên nhẫn chờ AI sinh tiếp
+        stableCount = 0;
+      }
+
       await new Promise(r => setTimeout(r, 1500));
     }
 
     // Đệm thêm 2 giây trước khi kích hoạt tải
     await new Promise(r => setTimeout(r, 2000));
-    return foundVideoUrl;
   }
 
   // 10c. Chờ AI phản hồi xong nói chung
@@ -988,7 +973,7 @@
           log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI tạo xong hình ảnh cho ${batchProgressStr}...`,
           is_completed: false
         });
-        await waitForImageGeneration(preImages, 360000, customStopSel);
+        await waitForImageGeneration(preImages, currentBatch.count, 360000, customStopSel);
         if (stopRequested) break;
 
         safeReportProgress(callerTabId, {
@@ -1056,7 +1041,7 @@
               log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI chuyển đổi thành video cho ${batchProgressStr}...`,
               is_completed: false
             });
-            await waitForVideoGeneration(preVideos, 600000, customStopSel);
+            await waitForVideoGeneration(preVideos, currentBatch.count, 600000, customStopSel);
           }
         }
         if (stopRequested) break;
