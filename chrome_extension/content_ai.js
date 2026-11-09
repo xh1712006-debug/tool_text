@@ -319,7 +319,7 @@
     return rect.left >= (splitX - 15);
   }
 
-  // 4c2. Phân biệt phần tử thuộc CỘT CHAT / HỘI THOẠI BÊN TRÁI (Nơi video xuất hiện nhanh nhất)
+  // 4c2. Phân biệt phần tử thuộc CỘT CHAT / HỘI THOẠI BÊN TRÁI (Nơi video và ảnh xuất hiện trực tiếp)
   function isLeftSideChatElement(el) {
     if (!el || !isElementVisible(el)) return false;
     if (el.closest && el.closest("#tune-text-hud")) return false;
@@ -343,6 +343,77 @@
 
     const rect = el.getBoundingClientRect();
     return rect.right <= splitX;
+  }
+
+  // 4c3. Kiểm tra phần tử có phải là avatar hoặc mascot con thú của ứng dụng hay không (TUYỆT ĐỐI BỎ QUA KHÔNG TẢI)
+  function isAppMascotOrAvatar(el) {
+    if (!el) return false;
+    try {
+      // 1. Kiểm tra kích thước nhỏ (Avatar con thú chỉ khoảng 30px - 90px, còn video/ảnh do AI tạo luôn rộng > 140px)
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0 && (rect.width < 130 || rect.height < 90)) {
+        return true;
+      }
+
+      // 2. Nằm trong container avatar / mascot / header / assistant / bot
+      if (el.closest && el.closest("[class*='avatar' i], [class*='mascot' i], [class*='profile' i], [class*='header' i], [class*='assistant' i], [data-testid*='avatar' i]")) {
+        return true;
+      }
+
+      // 3. Có chữ Muse hoặc avatar xung quanh
+      const label = (el.getAttribute("alt") || el.getAttribute("title") || el.getAttribute("aria-label") || "").toLowerCase();
+      if (label.includes("muse") || label.includes("avatar") || label.includes("bot")) {
+        return true;
+      }
+      if (el.parentElement && (el.parentElement.innerText || "").trim().toLowerCase() === "muse") {
+        return true;
+      }
+
+      // 4. URL có chứa từ khóa avatar / mascot / character
+      const src = (el.currentSrc || el.src || el.href || "").toLowerCase();
+      if (src.includes("avatar") || src.includes("mascot") || src.includes("character") || src.includes("logo") || src.includes("bot")) {
+        return true;
+      }
+    } catch (e) { }
+    return false;
+  }
+
+  // 4c4. Lấy danh sách ảnh hiển thị trên CỘT CHAT BÊN TRÁI (Loại bỏ 100% avatar con thú Muse)
+  function getChatImageUrls() {
+    const urls = new Set();
+    try {
+      document.querySelectorAll("img").forEach(img => {
+        if (!isLeftSideChatElement(img)) return; // Chỉ lấy trong cột chat bên trái
+        if (isAppMascotOrAvatar(img)) return; // BỎ QUA CON THÚ AVATAR!
+        const src = img.currentSrc || img.src || img.getAttribute("src");
+        if (src && !src.startsWith("data:") && isElementVisible(img)) {
+          urls.add(src.trim());
+        }
+      });
+    } catch (e) { }
+    return urls;
+  }
+
+  // 4c5. Lấy danh sách thẻ ảnh trên CỘT CHAT BÊN TRÁI (Sắp xếp từ trên xuống dưới)
+  function getChatImageCards() {
+    const cards = [];
+    try {
+      document.querySelectorAll("img").forEach(img => {
+        if (!isLeftSideChatElement(img)) return;
+        if (isAppMascotOrAvatar(img)) return; // BỎ QUA CON THÚ!
+        if (isElementVisible(img)) {
+          if (img.complete && (img.naturalWidth > 60 || img.naturalHeight > 60)) {
+            cards.push({
+              img: img,
+              src: img.currentSrc || img.src || img.getAttribute("src") || "",
+              rect: img.getBoundingClientRect()
+            });
+          }
+        }
+      });
+    } catch (e) { }
+    cards.sort((a, b) => a.rect.top - b.rect.top);
+    return cards;
   }
 
   // 4d. Tự động chuyển đổi giữa tab "Hình ảnh" và "Video" trên giao diện Muse.ai
@@ -794,40 +865,31 @@
     return true;
   }
 
-  // 10a. Chờ AI tạo đủ số lượng HÌNH ẢNH của đợt này TRÊN CỘT THƯ VIỆN BÊN PHẢI
-  async function waitForImageGeneration(initialImages, initialCardCount = 0, expectedCount = 1, maxWaitMs = 360000, customStopSelector = "") {
+  // 10a. Chờ AI tạo đủ số lượng HÌNH ẢNH của đợt này TRÊN CỘT CHAT BÊN TRÁI
+  async function waitForImageGeneration(initialImages, initialImageCount = 0, expectedCount = 1, maxWaitMs = 360000, customStopSelector = "") {
     const start = Date.now();
     let stableCount = 0;
-
-    // Đảm bảo tab đang ở view "Hình ảnh"
-    await switchMediaTab("Hình ảnh");
 
     // Chờ tối thiểu 3 giây đầu để AI tiếp nhận prompt qua mạng
     await new Promise(r => setTimeout(r, 3000));
 
-    // Bước B: Chờ cho tới khi thư viện bên phải xuất hiện đủ số lượng ảnh mới
+    // Bước B: Chờ cho tới khi cột chat bên trái xuất hiện đủ số lượng ảnh mới (loại trừ con thú avatar)
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return;
 
-      // 1. Đếm số lượng ảnh MỚI đã xuất hiện và nạp xong trên CỘT BÊN PHẢI (Loại trừ ảnh trong chat)
-      let newImagesLoadedCount = 0;
-      let totalRightSideImages = 0;
-      document.querySelectorAll("img").forEach(img => {
-        if (!isRightSideMediaElement(img)) return; // CHỈ ĐẾM CỘT BÊN PHẢI!
-        const src = img.currentSrc || img.src || img.getAttribute("src");
-        if (src && !src.startsWith("data:")) {
-          if (img.complete && (img.naturalWidth > 50 || img.naturalHeight > 50)) {
-            totalRightSideImages++;
-            if (!initialImages.has(src.trim())) {
-              newImagesLoadedCount++;
-            }
-          }
-        }
+      // 1. Quét tìm tất cả các ảnh MỚI TRÊN CỘT CHAT BÊN TRÁI
+      const currentChatImages = getChatImageCards();
+      const currentChatUrls = getChatImageUrls();
+
+      // Đếm theo URL mới
+      let newUrlsCount = 0;
+      currentChatUrls.forEach(u => {
+        if (!initialImages.has(u)) newUrlsCount++;
       });
 
-      // Đếm theo độ tăng tổng số ảnh trên cột bên phải
-      const newByTotalCount = Math.max(0, totalRightSideImages - initialCardCount);
-      const finalCount = Math.max(newImagesLoadedCount, newByTotalCount);
+      // Đếm theo số lượng thẻ ảnh mới trong chat
+      const newCardsCount = Math.max(0, currentChatImages.length - initialImageCount);
+      const finalCount = Math.max(newUrlsCount, newCardsCount);
 
       // 2. Kiểm tra xem có spinner thực tế nào đang quay không
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
@@ -835,23 +897,23 @@
 
       // Cập nhật tiến độ trực quan lên thanh HUD
       updateHUD(
-        `⏳ Đang chờ tạo đủ ${expectedCount} ảnh (Thư viện phải)... (Đã có ${finalCount}/${expectedCount} ảnh)`,
+        `⏳ Đang chờ tạo đủ ${expectedCount} ảnh (Cột chat)... (Đã có ${finalCount}/${expectedCount} ảnh)`,
         null, null, "", false
       );
 
-      // NẾU ĐÃ RA ĐỦ HOẶC VƯỢT SỐ LƯỢNG ẢNH CỦA ĐỢT NÀY (Ví dụ: 4/4 ảnh):
+      // NẾU ĐÃ RA ĐỦ HOẶC VƯỢT SỐ LƯỢNG ẢNH CỦA ĐỢT NÀY TRONG CHAT (Ví dụ: 4/4 ảnh):
       if (finalCount >= expectedCount) {
         if (!hasActiveSpinner && !isGenerating) {
           stableCount++;
           if (stableCount >= 2) {
-            console.log(`[Tune-Text] ✅ ĐÃ TẠO ĐỦ ${finalCount}/${expectedCount} ẢNH MỚI BÊN PHẢI! Chuyển ngay sang Bước 2.`);
+            console.log(`[Tune-Text] ✅ ĐÃ TẠO ĐỦ ${finalCount}/${expectedCount} ẢNH MỚI TRONG CHAT! Chuyển ngay sang Bước 2.`);
             break;
           }
         } else {
-          // Ngay cả khi isGenerating còn vướng văn bản trên giao diện, nếu đã đủ ảnh và ổn định 4 giây thì vẫn tiếp tục
+          // Bảo hiểm nếu AI còn vướng văn bản trên giao diện, nếu đã đủ ảnh và ổn định 4 giây thì vẫn tiếp tục
           stableCount++;
           if (stableCount >= 4) {
-            console.log(`[Tune-Text] ✅ ĐÃ CÓ ĐỦ ${finalCount}/${expectedCount} ẢNH MỚI BÊN PHẢI (Timeout ổn định)! Chuyển ngay sang Bước 2.`);
+            console.log(`[Tune-Text] ✅ ĐÃ CÓ ĐỦ ${finalCount}/${expectedCount} ẢNH MỚI TRONG CHAT (Timeout ổn định)! Chuyển ngay sang Bước 2.`);
             break;
           }
         }
@@ -884,6 +946,13 @@
       return true;
     }
     return false;
+  }
+
+  // Kiểm tra URL có phải là của Mascot con thú avatar của ứng dụng không
+  function isMascotUrl(url) {
+    if (!url || typeof url !== "string") return false;
+    const u = url.toLowerCase();
+    return u.includes("avatar") || u.includes("mascot") || u.includes("character") || u.includes("bot");
   }
 
   // 10b. Chờ AI tạo đủ số lượng VIDEO của đợt này TRÊN CỘT CHAT BÊN TRÁI
@@ -992,7 +1061,13 @@
 
       // Tải từng video theo đúng thứ tự xuất hiện từ trên xuống dưới
       for (const item of newChatCards) {
+        if (item.card && (isAppMascotOrAvatar(item.card.element) || isAppMascotOrAvatar(item.card.videoEl))) {
+          continue; // TUYỆT ĐỐI BỎ QUA CON THÚ MASCOT AVATAR!
+        }
+
         const cleanUrl = item.src;
+        if (isMascotUrl(cleanUrl)) continue; // TUYỆT ĐỐI BỎ QUA CON THÚ!
+
         if (cleanUrl && (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://") || cleanUrl.startsWith("blob:")) && !window.__ttDownloadedUrls.has(cleanUrl)) {
           window.__ttDownloadedUrls.add(cleanUrl);
 
@@ -1029,20 +1104,23 @@
         }
       }
 
-      // Quét thêm candidate URLs trong chat hoặc toàn trang nếu chưa đủ
+      // Quét thêm candidate URLs trong chat nếu chưa đủ (loại trừ tuyệt đối con thú avatar!)
       const allCandidates = [];
       document.querySelectorAll("video").forEach(v => {
         if (!isLeftSideChatElement(v)) return;
+        if (isAppMascotOrAvatar(v)) return; // BỎ QUA CON THÚ!
         const s = v.currentSrc || v.src || v.querySelector("source")?.src;
-        if (s && isVideoUrl(s) && !s.startsWith("data:")) allCandidates.push(s);
+        if (s && isVideoUrl(s) && !s.startsWith("data:") && !isMascotUrl(s)) allCandidates.push(s);
       });
       document.querySelectorAll("a[href*='.mp4'], a[href*='.webm'], a[download*='.mp4']").forEach(a => {
         if (!isLeftSideChatElement(a)) return;
-        if (a.href && isVideoUrl(a.href)) allCandidates.push(a.href);
+        if (isAppMascotOrAvatar(a)) return; // BỎ QUA CON THÚ!
+        if (a.href && isVideoUrl(a.href) && !isMascotUrl(a.href)) allCandidates.push(a.href);
       });
 
       for (const rawUrl of allCandidates) {
         const cleanUrl = rawUrl.trim();
+        if (isMascotUrl(cleanUrl)) continue; // BỎ QUA CON THÚ!
         if (preVideoUrls && preVideoUrls.has(cleanUrl)) continue;
         if ((cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://") || cleanUrl.startsWith("blob:")) && !window.__ttDownloadedUrls.has(cleanUrl)) {
           window.__ttDownloadedUrls.add(cleanUrl);
@@ -1194,16 +1272,11 @@
         }
 
         // ==============================================================
-        // BƯỚC 1: GỬI ĐOẠN VĂN BẢN (PROMPT CHÍNH) ➔ CHỜ TẠO HÌNH ẢNH XONG
+        // BƯỚC 1: GỬI ĐOẠN VĂN BẢN (PROMPT CHÍNH) ➔ CHỜ TẠO HÌNH ẢNH TRONG CHAT
         // ==============================================================
-        // 1a. TỰ ĐỘNG CHUYỂN SANG TAB "HÌNH ẢNH" TRƯỚC KHI TẠO ẢNH
-        updateHUD(`${loopPrefix} [1/2] Đang chuyển tab sang Hình ảnh...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
-        await switchMediaTab("Hình ảnh");
-        await new Promise(r => setTimeout(r, 1200));
-
-        // Chụp lại danh sách ảnh và số lượng card đã có trên cột bên phải trước khi gửi prompt
-        const preImages = getRightSideImageUrls();
-        const preImageCardCount = getRightSideCardCount("images");
+        // Chụp lại danh sách ảnh và số lượng card đã có TRONG CỘT CHAT BÊN TRÁI trước khi gửi prompt
+        const preImages = getChatImageUrls();
+        const preImageCardCount = getChatImageCards().length;
 
         const promptText = currentBatch.combinedPrompt;
         updateHUD(`${loopPrefix} [1/2] Đang chuẩn bị gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptText, false, currentLoop, loopCount, currentBatch.rangeLabel);
@@ -1247,13 +1320,13 @@
         await sendSinglePrompt(inputBox, promptText, customSendSel, customInputSel);
         if (stopRequested) break;
 
-        // 1d. Chờ AI tạo xong HÌNH ẢNH hoàn toàn trên cột thư viện bên phải (Đủ số lượng đợt này)
-        updateHUD(`${loopPrefix} [1/2] ${batchProgressStr}: Đang chờ AI tạo xong hình ảnh...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
+        // 1d. Chờ AI tạo xong HÌNH ẢNH hoàn toàn TRÊN CỘT CHAT BÊN TRÁI (Đủ số lượng đợt này)
+        updateHUD(`${loopPrefix} [1/2] ${batchProgressStr}: Đang chờ AI tạo xong hình ảnh trong chat...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
         safeReportProgress(callerTabId, {
           current_index: currentBatchIndex,
           total_prompts: totalBatchesPerLoop,
-          status_message: `${loopPrefix} Đang chờ AI tạo xong hình ảnh...`,
-          log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI tạo xong hình ảnh cho ${batchProgressStr}...`,
+          status_message: `${loopPrefix} Đang chờ AI tạo xong hình ảnh trong chat...`,
+          log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI tạo xong hình ảnh cho ${batchProgressStr} (theo dõi cột chat bên trái)...`,
           is_completed: false
         });
         await waitForImageGeneration(preImages, preImageCardCount, currentBatch.count, 360000, customStopSel);
@@ -1262,7 +1335,7 @@
         safeReportProgress(callerTabId, {
           current_index: currentBatchIndex,
           total_prompts: totalBatchesPerLoop,
-          status_message: `${loopPrefix} Đã tạo xong hình ảnh!`,
+          status_message: `${loopPrefix} Đã tạo xong hình ảnh trong chat!`,
           log: `[Tab AI] ${loopPrefix} ✅ Đã tạo xong hình ảnh cho ${batchProgressStr}!`,
           is_completed: false
         });
