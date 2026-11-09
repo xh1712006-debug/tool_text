@@ -273,11 +273,62 @@
     return null;
   }
 
+  // 4b. Kiểm tra một phần tử có đang hiển thị thực sự trên màn hình không (chuẩn HTML5 + SVG + Flex/Grid)
+  function isElementVisible(el) {
+    if (!el) return false;
+    try {
+      const style = window.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+        return false;
+      }
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    } catch (e) {
+      return el.offsetParent !== null;
+    }
+  }
+
+  // 4c. Chụp danh sách các ảnh đang hiển thị trên giao diện
+  function getVisibleImageUrls() {
+    const urls = new Set();
+    try {
+      document.querySelectorAll("img").forEach(img => {
+        const src = img.currentSrc || img.src || img.getAttribute("src");
+        if (src && !src.startsWith("data:") && isElementVisible(img)) {
+          urls.add(src.trim());
+        }
+      });
+    } catch (e) {}
+    return urls;
+  }
+
+  // 4d. Chụp danh sách các video đang hiển thị trên giao diện
+  function getVisibleVideoUrls() {
+    const urls = new Set();
+    try {
+      document.querySelectorAll("video, source, a[href*='.mp4'], a[href*='.webm']").forEach(el => {
+        const src = el.currentSrc || el.src || el.href || el.getAttribute("src") || el.getAttribute("data-src") || el.getAttribute("data-video-url");
+        if (src && !src.startsWith("data:") && (src.startsWith("http") || src.startsWith("blob:"))) {
+          urls.add(src.trim());
+        }
+      });
+    } catch (e) {}
+    return urls;
+  }
+
   // 5. Kiểm tra AI có đang trong trạng thái bận sinh câu trả lời, ảnh hoặc video không
   function isAIGenerating(customStopSelector = "") {
     if (findStopButton(customStopSelector)) return true;
 
-    // 1. Selector streaming, spinner và loading indicator (Hỗ trợ ChatGPT, Claude, Gemini, DeepSeek, Muse...)
+    // 1. Kiểm tra nút Gửi (Send Button): Nếu nút gửi đang bị disabled hoặc ẩn, AI đang xử lý!
+    const sendBtn = findSendButton();
+    if (sendBtn) {
+      if (sendBtn.disabled || sendBtn.getAttribute("aria-disabled") === "true" || sendBtn.classList.contains("disabled")) {
+        return true;
+      }
+    }
+
+    // 2. Selector streaming, spinner và loading indicator (Hỗ trợ ChatGPT, Claude, Gemini, DeepSeek, Muse, Kling...)
     const streamingSelectors = [
       ".result-streaming",
       "[data-is-streaming='true']",
@@ -287,23 +338,31 @@
       "[class*='loading-dots']",
       "[class*='dot-flashing']",
       "svg.animate-spin",
+      "[class*='animate-spin']",
       "[data-state='loading']",
       "[aria-busy='true']",
       "[class*='loader']",
       "[class*='spinner']",
-      "[class*='animate-spin']",
       "[class*='loading']",
-      "[class*='dots']"
+      "[class*='skeleton']",
+      "[class*='placeholder']",
+      "[class*='shimmer']",
+      "[class*='dots']",
+      "progress",
+      "[role='progressbar']",
+      "[class*='progress']"
     ];
 
     for (const s of streamingSelectors) {
       try {
-        const el = document.querySelector(s);
-        if (el && el.offsetParent !== null) return true;
+        const elements = document.querySelectorAll(s);
+        for (const el of elements) {
+          if (isElementVisible(el)) return true;
+        }
       } catch (e) { }
     }
 
-    // 2. Nhận diện các từ khóa trạng thái đặc thù của Muse.ai & các AI Studio (TreeWalker nhanh < 2ms trên toàn bộ DOM)
+    // 3. Nhận diện các từ khóa trạng thái đặc thù của Muse.ai & các AI Studio (TreeWalker nhanh < 2ms trên toàn bộ DOM)
     try {
       const walker = document.createTreeWalker(
         document.body,
@@ -312,28 +371,14 @@
         false
       );
       let node;
+      const statusRegex = /(creating\s*(collage|image|video|prompt)?|rendering\s*(video)?|generating\s*(video|image)?|generating\.\.\.|creating\.\.\.|rendering\.\.\.|processing\.\.\.|in\s*queue|queued|waiting|upscaling|vui\s*lòng\s*chờ|đang\s*tạo|đang\s*kết\s*xuất|đang\s*xử\s*lý|\b\d{1,2}%\b)/i;
+
       while ((node = walker.nextNode())) {
         const txt = (node.nodeValue || "").trim();
-        if (!txt) continue;
-        if (
-          txt.includes("Creating collage") ||
-          txt.includes("Creating image") ||
-          txt.includes("Creating video") ||
-          txt.includes("Rendering video") ||
-          txt.includes("Generating video") ||
-          txt.includes("Generating image") ||
-          txt.includes("Generating...") ||
-          txt.includes("Creating...") ||
-          txt.includes("Rendering...") ||
-          txt.includes("Processing...") ||
-          txt.includes("Đang tạo") ||
-          txt.includes("Đang kết xuất") ||
-          txt.includes("Đang xử lý") ||
-          txt.startsWith("Creating ") ||
-          txt.startsWith("Rendering ")
-        ) {
+        if (!txt || txt.length > 100) continue;
+        if (statusRegex.test(txt)) {
           const parent = node.parentElement;
-          if (parent && parent.offsetParent !== null) {
+          if (parent && isElementVisible(parent)) {
             return true;
           }
         }
@@ -522,25 +567,34 @@
     return true;
   }
 
-  // 10. Chờ AI phản hồi xong hoàn toàn (Hỗ trợ cả văn bản, sinh hình ảnh và tạo video)
-  async function waitForAIFinish(maxWaitMs = 600000, customStopSelector = "") {
+  // 10a. Chờ AI tạo xong HÌNH ẢNH / COLLAGE hoàn toàn (Bước 1)
+  async function waitForImageGeneration(initialImages, maxWaitMs = 360000, customStopSelector = "") {
     const start = Date.now();
     let hasStarted = false;
+    let newImageFound = false;
 
-    // Chờ tối thiểu 2.5s đầu tiên để AI tiếp nhận prompt qua mạng và kịp hiển thị loading/spinner
-    await new Promise(r => setTimeout(r, 2500));
+    // Chờ tối thiểu 3 giây đầu để AI tiếp nhận prompt qua mạng và kịp hiển thị loading/spinner
+    await new Promise(r => setTimeout(r, 3000));
 
-    // Bước A: Chờ tối đa 25 giây để AI BẮT ĐẦU xử lý (tránh trường hợp mạng lag chưa kịp hiện spinner / 'Creating collage')
-    for (let i = 0; i < 50; i++) {
+    // Bước A: Chờ tối đa 30 giây để AI BẮT ĐẦU xử lý
+    for (let i = 0; i < 60; i++) {
       if (stopRequested) return;
       if (isAIGenerating(customStopSelector)) {
         hasStarted = true;
         break;
       }
+      const curImgs = getVisibleImageUrls();
+      for (const u of curImgs) {
+        if (!initialImages.has(u)) {
+          hasStarted = true;
+          break;
+        }
+      }
+      if (hasStarted) break;
       await new Promise(r => setTimeout(r, 500));
     }
 
-    // Bước B: Chờ cho tới khi AI sinh xong toàn bộ (không còn 'Creating collage', spinner, Stop button)
+    // Bước B: Chờ cho tới khi AI sinh xong toàn bộ ảnh
     let stableCount = 0;
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return;
@@ -553,32 +607,141 @@
         continue;
       }
 
+      // Kiểm tra xem đã có ảnh mới xuất hiện và ảnh đó đã nạp xong (naturalWidth > 50) chưa
+      let completedImageFound = false;
+      document.querySelectorAll("img").forEach(img => {
+        const src = img.currentSrc || img.src || img.getAttribute("src");
+        if (src && !initialImages.has(src.trim()) && isElementVisible(img)) {
+          if (img.complete && (img.naturalWidth > 50 || img.naturalHeight > 50)) {
+            completedImageFound = true;
+            newImageFound = true;
+          }
+        }
+      });
+
+      // Nếu AI đã bắt đầu xử lý nhưng chưa thấy ảnh mới hoàn tất, tiếp tục kiên nhẫn chờ
+      if (hasStarted && !completedImageFound && (Date.now() - start < 60000)) {
+        stableCount = 0;
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+
       stableCount++;
-      // Đảm bảo không còn bất kỳ spinner, loader hay trạng thái 'Creating...' trong 4 giây liên tiếp
-      if (stableCount >= 4) {
+      // Đảm bảo không còn bất kỳ spinner, loader hay trạng thái 'Creating...' trong ít nhất 4-6 giây liên tiếp
+      const requiredStable = (newImageFound || completedImageFound) ? 4 : 6;
+      if (stableCount >= requiredStable) {
         break;
       }
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    // Đệm thêm 3 giây để hình ảnh/video render hoàn tất và ô chat mở khóa trở lại
+    // Đệm thêm 3 giây để hình ảnh render hoàn tất và ô chat mở khóa trở lại
     await new Promise(r => setTimeout(r, 3000));
+  }
+
+  // 10b. Chờ AI xử lý và kết xuất VIDEO xong hoàn toàn (Bước 2)
+  async function waitForVideoGeneration(initialVideos, maxWaitMs = 600000, customStopSelector = "") {
+    const start = Date.now();
+    let hasStarted = false;
+    let readyVideoFound = false;
+
+    // Chờ tối thiểu 4 giây đầu để lệnh gửi đi và AI bắt đầu quá trình tạo video
+    await new Promise(r => setTimeout(r, 4000));
+
+    // Bước A: Chờ tối đa 45 giây để AI BẮT ĐẦU xử lý video
+    for (let i = 0; i < 90; i++) {
+      if (stopRequested) return;
+      if (isAIGenerating(customStopSelector)) {
+        hasStarted = true;
+        break;
+      }
+      const curVideos = getVisibleVideoUrls();
+      for (const u of curVideos) {
+        if (!initialVideos.has(u)) {
+          hasStarted = true;
+          break;
+        }
+      }
+      if (hasStarted) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // Bước B: Chờ cho tới khi VIDEO được sinh xong hoàn toàn
+    // Quá trình tạo video mất nhiều thời gian (30 giây đến 3 phút), tuyệt đối KHÔNG ngắt sớm!
+    let stableCount = 0;
+    while (Date.now() - start < maxWaitMs) {
+      if (stopRequested) return;
+
+      const generatingNow = isAIGenerating(customStopSelector);
+      if (generatingNow) {
+        hasStarted = true;
+        stableCount = 0;
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+
+      // Quét kiểm tra video mới đã hoàn thiện và sẵn sàng phát chưa
+      let curReady = false;
+      document.querySelectorAll("video").forEach(v => {
+        const s = v.currentSrc || v.src || v.querySelector("source")?.src;
+        if (s && !initialVideos.has(s.trim()) && isElementVisible(v)) {
+          // Video đã sẵn sàng nếu nạp xong metadata (readyState >= 2) hoặc duration > 0
+          if (v.readyState >= 2 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
+            curReady = true;
+            readyVideoFound = true;
+          }
+        }
+      });
+
+      document.querySelectorAll("a[href*='.mp4'], a[href*='.webm']").forEach(a => {
+        const href = a.href;
+        if (href && !initialVideos.has(href.trim()) && isElementVisible(a)) {
+          curReady = true;
+          readyVideoFound = true;
+        }
+      });
+
+      // Nếu đã bắt đầu xử lý nhưng chưa có video hoàn chỉnh, và chưa quá 2 phút => tiếp tục kiên nhẫn chờ
+      if (hasStarted && !curReady && (Date.now() - start < 150000)) {
+        stableCount = 0;
+        await new Promise(r => setTimeout(r, 1500));
+        continue;
+      }
+
+      stableCount++;
+      // Đảm bảo không còn bất kỳ spinner, loader trong 5-8 giây liên tiếp
+      const targetStable = readyVideoFound ? 5 : 8;
+      if (stableCount >= targetStable) {
+        break;
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    // Đệm thêm 3 giây để tệp video sẵn sàng được tải về an toàn
+    await new Promise(r => setTimeout(r, 3000));
+  }
+
+  // 10c. Chờ AI phản hồi xong nói chung
+  async function waitForAIFinish(maxWaitMs = 600000, customStopSelector = "") {
+    await waitForImageGeneration(new Set(), maxWaitMs, customStopSelector);
   }
 
   // 11. Tự động nhận diện và tải video sinh ra từ AI về thư mục tương ứng (video1, video2, video3...)
   if (!window.__videoCounterByFolder) window.__videoCounterByFolder = {};
 
-  function checkAndDownloadNewVideos(targetFolder, batchIndex, callerTabId) {
+  function checkAndDownloadNewVideos(targetFolder, batchIndex, callerTabId, preVideoUrls = null) {
     try {
       if (!window.__ttDownloadedUrls) window.__ttDownloadedUrls = new Set();
       const candidates = [];
 
-      // 1. Quét tất cả thẻ <video>
+      // 1. Quét tất cả thẻ <video> (CHỈ LẤY VIDEO ĐÃ SẴN SÀNG, KHÔNG LẤY VIDEO ĐANG LOAD DỞ)
       document.querySelectorAll("video").forEach(v => {
-        if (v.src && !v.src.startsWith("data:")) candidates.push(v.src);
-        v.querySelectorAll("source").forEach(s => {
-          if (s.src && !s.src.startsWith("data:")) candidates.push(s.src);
-        });
+        const s = v.currentSrc || v.src || v.querySelector("source")?.src;
+        if (s && !s.startsWith("data:")) {
+          if (v.readyState >= 2 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
+            candidates.push(s);
+          }
+        }
       });
 
       // 2. Quét thẻ <a> có download hoặc đuôi video
@@ -595,6 +758,11 @@
       for (const rawUrl of candidates) {
         if (!rawUrl) continue;
         const cleanUrl = rawUrl.trim();
+        // TUYỆT ĐỐI BỎ QUA nếu video này đã có từ trước khi gửi lệnh
+        if (preVideoUrls && preVideoUrls.has(cleanUrl)) {
+          continue;
+        }
+
         if ((cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://") || cleanUrl.startsWith("blob:")) && !window.__ttDownloadedUrls.has(cleanUrl)) {
           window.__ttDownloadedUrls.add(cleanUrl);
 
@@ -616,7 +784,7 @@
             videoIndex: videoIndex,
             callerTabId: callerTabId
           });
-          console.log(`[Tune-Text Video] Đã phát hiện video #${videoIndex} và tải vào '${targetFolder}/${vName}':`, cleanUrl);
+          console.log(`[Tune-Text Video] Đã phát hiện video mới #${videoIndex} và tải vào '${targetFolder}/${vName}':`, cleanUrl);
         }
       }
     } catch (e) {
@@ -667,7 +835,15 @@
     // Luôn bắt đầu đếm số thứ tự video từ 1 cho mỗi thư mục
     if (!window.__videoCounterByFolder) window.__videoCounterByFolder = {};
     window.__videoCounterByFolder[targetVideoFolder] = 0;
-    if (window.__ttDownloadedUrls) window.__ttDownloadedUrls.clear();
+    if (!window.__ttDownloadedUrls) window.__ttDownloadedUrls = new Set();
+
+    // Nạp sẵn toàn bộ video ĐÃ CÓ TRÊN TRANG trước khi chạy để TUYỆT ĐỐI KHÔNG tải nhầm video cũ:
+    document.querySelectorAll("video, source, a[href*='.mp4'], a[href*='.webm']").forEach(el => {
+      const u = el.currentSrc || el.src || el.href || el.getAttribute("data-video-url") || el.getAttribute("data-src");
+      if (u && (u.startsWith("http") || u.startsWith("blob:"))) {
+        window.__ttDownloadedUrls.add(u.trim());
+      }
+    });
 
     // Tạo danh sách các Lô (Batches) từ danh sách prompts
     const batches = [];
@@ -780,6 +956,9 @@
           continue;
         }
 
+        // Chụp lại danh sách ảnh đã có trên trang trước khi gửi prompt tạo ảnh
+        const preImages = getVisibleImageUrls();
+
         // 1b. Gõ toàn bộ nội dung đoạn văn bản và gửi đi
         updateHUD(`${loopPrefix} [1/2] Đang gõ ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptText, false, currentLoop, loopCount, currentBatch.rangeLabel);
         await sendSinglePrompt(inputBox, promptText, customSendSel, customInputSel);
@@ -794,7 +973,7 @@
           log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI tạo xong hình ảnh cho ${batchProgressStr}...`,
           is_completed: false
         });
-        await waitForAIFinish(300000, customStopSel);
+        await waitForImageGeneration(preImages, 360000, customStopSel);
         if (stopRequested) break;
 
         safeReportProgress(callerTabId, {
@@ -808,6 +987,7 @@
         // ==============================================================
         // BƯỚC 2: SAU KHI HÌNH ẢNH ĐÃ TẠO XONG ➔ MỚI GỬI TIẾP CÂU LỆNH
         // ==============================================================
+        let preVideos = getVisibleVideoUrls();
         if (enablePrefixHeader) {
           let cmdToSend = prefixTemplate
             .replace(/{count}/g, currentBatch.count)
@@ -817,8 +997,8 @@
             .replace(/\s+/g, " ")
             .trim();
 
-          // Nghỉ 2 giây để AI cập nhật giao diện sau khi tạo xong ảnh
-          await new Promise(r => setTimeout(r, 2000));
+          // Nghỉ 2.5 giây để AI cập nhật giao diện sau khi tạo xong ảnh
+          await new Promise(r => setTimeout(r, 2500));
           if (stopRequested) break;
 
           updateHUD(`${loopPrefix} [2/2] Đang gửi câu lệnh tạo video...`, currentBatchIndex, totalBatchesPerLoop, cmdToSend, false, currentLoop, loopCount, currentBatch.rangeLabel);
@@ -837,6 +1017,9 @@
             log: `[Tab AI] ${loopPrefix} [Bước 2/2] Gửi câu lệnh: "${cmdToSend}"`,
             is_completed: false
           });
+
+          // Chụp lại toàn bộ video trước khi gửi lệnh tạo video để tuyệt đối không tải nhầm
+          preVideos = getVisibleVideoUrls();
 
           // Tìm lại ô chat sau khi đã sinh ảnh
           let cmdInputBox = await waitForAIReady(customInputSel);
@@ -858,7 +1041,7 @@
               log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI chuyển đổi thành video cho ${batchProgressStr}...`,
               is_completed: false
             });
-            await waitForAIFinish(300000, customStopSel);
+            await waitForVideoGeneration(preVideos, 600000, customStopSel);
           }
         }
         if (stopRequested) break;
@@ -866,9 +1049,9 @@
         // ==============================================================
         // BƯỚC 3: TỰ ĐỘNG TẢI VIDEO VỀ THƯ MỤC CÙNG TÊN TỆP PROMPT
         // ==============================================================
-        checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId);
-        setTimeout(() => checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId), 3000);
-        setTimeout(() => checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId), 6000);
+        checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId, preVideos);
+        setTimeout(() => checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId, preVideos), 3000);
+        setTimeout(() => checkAndDownloadNewVideos(targetVideoFolder, currentBatchIndex, callerTabId, preVideos), 6000);
 
         // Báo hoàn thành lô này an toàn
         const isAllLoopsCompleted = (!isTimeMode && !isInfinite && currentLoop === loopCount && currentBatchIndex === totalBatchesPerLoop);

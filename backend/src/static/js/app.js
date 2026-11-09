@@ -1510,7 +1510,7 @@ async function startRPAPrompter() {
 
     // 1. NẾU ĐÃ KÍCH HOẠT CHROME EXTENSION: TỰ ĐỘNG CHUYỂN SANG TAB BÊN CẠNH VÀ GÕ
     if (document.documentElement.dataset.tuneTextExtension === "active") {
-        if (detectedExtensionVersion && !["1.0.9", "1.1.0", "1.2.0", "1.2.1", "1.2.2"].includes(detectedExtensionVersion)) {
+        if (detectedExtensionVersion && ["1.0.0", "1.0.1", "1.0.2"].includes(detectedExtensionVersion)) {
             const modal = document.getElementById("extensionReloadModal");
             if (modal) {
                 modal.classList.remove("hidden");
