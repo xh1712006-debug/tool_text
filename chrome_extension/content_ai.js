@@ -332,7 +332,9 @@
       "svg.animate-spin",
       "[class*='animate-spin']",
       "[data-state='loading']",
-      "[aria-busy='true']"
+      "[aria-busy='true']",
+      "[class*='bubble']",
+      "[class*='searching']"
     ];
 
     for (const s of streamingSelectors) {
@@ -355,7 +357,7 @@
         false
       );
       let node;
-      const statusRegex = /(creating\s+(collage|image|video)|rendering\s+video|generating\s+(video|image)|creating\.\.\.|generating\.\.\.|rendering\.\.\.|processing\.\.\.|đang\s+tạo\s+(ảnh|video|hình)|đang\s+kết\s+xuất)/i;
+      const statusRegex = /(creating\s+(collage|image|video)|rendering\s+video|generating\s+(video|image)|searching\s+memory|creating\.\.\.|generating\.\.\.|rendering\.\.\.|processing\.\.\.|thinking\.\.\.|đang\s+tạo\s+(ảnh|video|hình)|đang\s+kết\s+xuất)/i;
 
       while ((node = walker.nextNode())) {
         const parent = node.parentElement;
@@ -636,94 +638,97 @@
     await new Promise(r => setTimeout(r, 1500));
   }
 
+  // Hàm kiểm tra một URL có thực sự là tệp VIDEO hay không (loại trừ 100% tệp ảnh PNG/JPG)
+  function isVideoUrl(url) {
+    if (!url || typeof url !== "string") return false;
+    const u = url.toLowerCase().split("?")[0];
+    if (
+      u.endsWith(".png") || u.endsWith(".jpg") || u.endsWith(".jpeg") ||
+      u.endsWith(".webp") || u.endsWith(".gif") || u.endsWith(".svg") ||
+      u.endsWith(".txt") || u.endsWith(".json")
+    ) {
+      return false; // Tuyệt đối loại trừ tệp ảnh hoặc dữ liệu khác
+    }
+    if (u.endsWith(".mp4") || u.endsWith(".webm") || u.endsWith(".mov") || u.endsWith(".mkv") || u.includes("/video/")) {
+      return true;
+    }
+    if (url.startsWith("blob:") && !url.includes("image")) {
+      return true;
+    }
+    return false;
+  }
+
   // 10b. Chờ AI xử lý và kết xuất VIDEO xong hoàn toàn (Bước 2)
   async function waitForVideoGeneration(initialVideos, maxWaitMs = 600000, customStopSelector = "") {
     const start = Date.now();
-    let hasStarted = false;
+    let readyVideoFound = false;
+    let foundVideoUrl = null;
 
-    // Chờ tối thiểu 3 giây đầu để lệnh gửi đi và AI bắt đầu quá trình tạo video
-    await new Promise(r => setTimeout(r, 3000));
+    // Chờ tối thiểu 4 giây đầu để lệnh gửi đi và AI bắt đầu quá trình tạo video
+    await new Promise(r => setTimeout(r, 4000));
 
-    // Bước A: Chờ tối đa 30 giây để AI BẮT ĐẦU xử lý video
-    for (let i = 0; i < 60; i++) {
-      if (stopRequested) return;
-      if (isAIGenerating(customStopSelector)) {
-        hasStarted = true;
-        break;
-      }
-      const curVideos = getVisibleVideoUrls();
-      for (const u of curVideos) {
-        if (!initialVideos.has(u)) {
-          hasStarted = true;
-          break;
-        }
-      }
-      if (hasStarted) break;
-      await new Promise(r => setTimeout(r, 500));
-    }
-
-    // Bước B: Chờ cho tới khi VIDEO được sinh xong hoàn toàn
+    // Vòng lặp chờ VIDEO:
+    // TUYỆT ĐỐI CHỈ HOÀN THÀNH KHI ĐÃ CÓ VIDEO MỚI VÀ VIDEO ĐÓ PHÁT ĐƯỢC!
     let stableCount = 0;
     while (Date.now() - start < maxWaitMs) {
-      if (stopRequested) return;
+      if (stopRequested) return null;
 
-      // 1. Quét kiểm tra video mới đã hoàn thiện và sẵn sàng phát chưa
+      // 1. Quét tìm video THỰC SỰ mới (loại trừ toàn bộ ảnh PNG/JPG)
       let curReady = false;
-      let newVideoCount = 0;
       document.querySelectorAll("video").forEach(v => {
         if (v.closest && v.closest("#tune-text-hud")) return;
         const s = v.currentSrc || v.src || v.querySelector("source")?.src;
-        if (s && !initialVideos.has(s.trim()) && isElementVisible(v)) {
-          // Video đã sẵn sàng nếu nạp xong metadata (readyState >= 2) hoặc duration > 0
+        if (s && isVideoUrl(s) && !initialVideos.has(s.trim()) && isElementVisible(v)) {
+          // Video phải load được metadata hoặc thời lượng > 0
           if (v.readyState >= 2 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
             curReady = true;
-            newVideoCount++;
+            readyVideoFound = true;
+            foundVideoUrl = s.trim();
           }
         }
       });
 
-      document.querySelectorAll("a[href*='.mp4'], a[href*='.webm']").forEach(a => {
+      // Quét thẻ <a> có link VIDEO (.mp4, .webm) - TUYỆT ĐỐI KHÔNG LẤY ẢNH (.png, .jpg)
+      document.querySelectorAll("a[href*='.mp4'], a[href*='.webm'], a[download*='.mp4'], a[download*='.webm']").forEach(a => {
         if (a.closest && a.closest("#tune-text-hud")) return;
         const href = a.href;
-        if (href && !initialVideos.has(href.trim()) && isElementVisible(a)) {
+        if (href && isVideoUrl(href) && !initialVideos.has(href.trim()) && isElementVisible(a)) {
           curReady = true;
-          newVideoCount++;
+          readyVideoFound = true;
+          foundVideoUrl = href.trim();
         }
       });
 
+      // 2. Kiểm tra các dấu hiệu AI đang xử lý (Searching memory, spinner, ba chấm...)
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
-      const generatingNow = isAIGenerating(customStopSelector);
+      const isGenerating = isAIGenerating(customStopSelector);
 
-      // NẾU ĐÃ CÓ VIDEO MỚI SẴN SÀNG VÀ KHÔNG CÒN SPINNER QUAY:
-      if (curReady && !hasActiveSpinner) {
+      // NẾU ĐÃ TÌM THẤY VIDEO MỚI VÀ VIDEO ĐÓ ĐÃ HOÀN TẤT:
+      if (curReady && !hasActiveSpinner && !isGenerating) {
         stableCount++;
-        if (stableCount >= 2) {
-          console.log(`[Tune-Text] ✅ Đã tìm thấy ${newVideoCount} video mới sẵn sàng! Chuyển sang Bước 3 (Tải video).`);
+        if (stableCount >= 3) {
+          console.log(`[Tune-Text] ✅ ĐÃ CÓ VIDEO MỚI HOÀN THIỆN! URL: ${foundVideoUrl}. Bắt đầu tải.`);
           break;
         }
         await new Promise(r => setTimeout(r, 1000));
         continue;
       }
 
-      // Nếu AI vẫn đang render video:
-      if (generatingNow || hasActiveSpinner) {
-        hasStarted = true;
-        stableCount = 0;
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
+      // NẾU CHƯA CÓ VIDEO MỚI: BẮT BUỘC PHẢI TIẾP TỤC CHỜ!
+      // Cập nhật trạng thái hiển thị trên HUD để người dùng biết AI đang làm video
+      const elapsedSec = Math.floor((Date.now() - start) / 1000);
+      updateHUD(
+        `⏳ Đang chờ AI kết xuất video... [${elapsedSec}s] (Vui lòng không tắt tab)`,
+        null, null, "", false
+      );
 
-      stableCount++;
-      // Nếu đã chờ và AI rảnh rỗi trong 5 giây liên tiếp:
-      if (stableCount >= 5) {
-        console.log(`[Tune-Text] AI đã rảnh rỗi ${stableCount}s. Chuyển sang tải video!`);
-        break;
-      }
-      await new Promise(r => setTimeout(r, 1000));
+      // Tuyệt đối KHÔNG ngắt sớm khi chưa có video!
+      await new Promise(r => setTimeout(r, 1500));
     }
 
-    // Đệm thêm 2 giây để tệp video sẵn sàng được tải về an toàn
+    // Đệm thêm 2 giây trước khi kích hoạt tải
     await new Promise(r => setTimeout(r, 2000));
+    return foundVideoUrl;
   }
 
   // 10c. Chờ AI phản hồi xong nói chung
@@ -739,25 +744,30 @@
       if (!window.__ttDownloadedUrls) window.__ttDownloadedUrls = new Set();
       const candidates = [];
 
-      // 1. Quét tất cả thẻ <video> (CHỈ LẤY VIDEO ĐÃ SẴN SÀNG, KHÔNG LẤY VIDEO ĐANG LOAD DỞ)
+      // 1. Quét tất cả thẻ <video> (CHỈ LẤY VIDEO ĐÃ SẴN SÀNG, BỎ QUA ẢNH)
       document.querySelectorAll("video").forEach(v => {
+        if (v.closest && v.closest("#tune-text-hud")) return;
         const s = v.currentSrc || v.src || v.querySelector("source")?.src;
-        if (s && !s.startsWith("data:")) {
+        if (s && isVideoUrl(s) && !s.startsWith("data:")) {
           if (v.readyState >= 2 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
             candidates.push(s);
           }
         }
       });
 
-      // 2. Quét thẻ <a> có download hoặc đuôi video
-      document.querySelectorAll("a[href*='.mp4'], a[href*='.webm'], a[download]").forEach(a => {
-        if (a.href && !a.href.startsWith("javascript:")) candidates.push(a.href);
+      // 2. Quét thẻ <a> có đuôi video (TUYỆT ĐỐI KHÔNG QUÉT a[download] CHUNG CHUNG VÌ SẼ DÍNH ẢNH)
+      document.querySelectorAll("a[href*='.mp4'], a[href*='.webm'], a[download*='.mp4'], a[download*='.webm']").forEach(a => {
+        if (a.closest && a.closest("#tune-text-hud")) return;
+        if (a.href && isVideoUrl(a.href) && !a.href.startsWith("javascript:")) {
+          candidates.push(a.href);
+        }
       });
 
-      // 3. Quét các thuộc tính đặc trưng của Muse.ai hoặc các AI Studio
+      // 3. Quét các thuộc tính đặc trưng video
       document.querySelectorAll("[data-video-url], [data-video], [data-src*='.mp4'], [data-src*='.webm']").forEach(el => {
+        if (el.closest && el.closest("#tune-text-hud")) return;
         const u = el.getAttribute("data-video-url") || el.getAttribute("data-video") || el.getAttribute("data-src");
-        if (u) candidates.push(u);
+        if (u && isVideoUrl(u)) candidates.push(u);
       });
 
       for (const rawUrl of candidates) {
