@@ -611,21 +611,31 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Khôi phục cài đặt câu mở đầu và mã đặc biệt
+    // Khôi phục cài đặt câu mở đầu và mã đặc biệt theo đúng cấu hình chuẩn
     const savedPrefixTemplate = localStorage.getItem("tune_text_prefix_template");
-    if (savedPrefixTemplate !== null) {
-        const tplInput = document.getElementById("rpaPrefixTemplate");
-        if (tplInput) tplInput.value = savedPrefixTemplate;
+    const tplInput = document.getElementById("rpaPrefixTemplate");
+    if (tplInput) {
+        if (savedPrefixTemplate && savedPrefixTemplate !== "hãy tạo cho tôi {count} đợt {batch} {code}") {
+            tplInput.value = savedPrefixTemplate;
+        } else {
+            tplInput.value = "hãy tạo cho tôi {count} video với {count} ảnh tham chiếu trên với promt : {code}";
+        }
     }
+
     const savedSpecialCode = localStorage.getItem("tune_text_special_code");
-    if (savedSpecialCode !== null) {
-        const scInput = document.getElementById("rpaSpecialCode");
-        if (scInput) scInput.value = savedSpecialCode;
+    const scInput = document.getElementById("rpaSpecialCode");
+    if (scInput) {
+        if (savedSpecialCode && savedSpecialCode.trim()) {
+            scInput.value = savedSpecialCode;
+        } else {
+            scInput.value = "Transform the provided image into a 10-second premium editorial";
+        }
     }
+
     const savedEnablePrefix = localStorage.getItem("tune_text_enable_prefix");
-    if (savedEnablePrefix !== null) {
-        const epChk = document.getElementById("rpaEnablePrefixHeader");
-        if (epChk) epChk.checked = (savedEnablePrefix === "1");
+    const epChk = document.getElementById("rpaEnablePrefixHeader");
+    if (epChk) {
+        epChk.checked = (savedEnablePrefix !== null) ? (savedEnablePrefix === "1") : true;
     }
     updateRPAPrefixPreview();
 
@@ -1146,10 +1156,10 @@ function updateRPAPrefixPreview() {
 
     previewEl.className = "text-xs text-amber-300 font-mono font-medium truncate";
     const rawBatch = parseInt(batchInput?.value, 10);
-    const count = (!isNaN(rawBatch) && rawBatch > 0) ? rawBatch : 1;
-    const specialCode = specialCodeInput ? specialCodeInput.value.trim() : "";
-    let template = templateInput ? templateInput.value.trim() : "hãy tạo cho tôi {count} đợt {batch} {code}";
-    if (!template) template = "hãy tạo cho tôi {count} đợt {batch} {code}";
+    const count = (!isNaN(rawBatch) && rawBatch > 0) ? rawBatch : 4;
+    const specialCode = specialCodeInput ? specialCodeInput.value.trim() : "Transform the provided image into a 10-second premium editorial";
+    let template = templateInput ? templateInput.value.trim() : "hãy tạo cho tôi {count} video với {count} ảnh tham chiếu trên với promt : {code}";
+    if (!template) template = "hãy tạo cho tôi {count} video với {count} ảnh tham chiếu trên với promt : {code}";
 
     // Lấy tên thư mục tệp đang chọn nếu có
     const activeItem = (window.rpaFileQueue && window.rpaFileQueue[window.rpaActiveFileIndex]) || null;
@@ -1175,7 +1185,7 @@ function updateRPAPrefixPreview() {
         .replace(/\s+/g, " ")
         .trim();
 
-    if (!previewSentence.endsWith(":")) {
+    if (!previewSentence.endsWith(":") && !template.includes(":")) {
         previewSentence += ":";
     }
     previewEl.textContent = previewSentence;
@@ -1196,11 +1206,15 @@ function insertRPATag(tag) {
 // Khôi phục mẫu câu mặc định ban đầu
 function resetRPAPrefixTemplate() {
     const input = document.getElementById("rpaPrefixTemplate");
+    const specialCodeInput = document.getElementById("rpaSpecialCode");
     if (input) {
-        input.value = "hãy tạo cho tôi {count} đợt {batch} {code}";
-        updateRPAPrefixPreview();
-        showToast("Đã khôi phục mẫu câu lệnh gốc: hãy tạo cho tôi {count} đợt {batch} {code}", "info");
+        input.value = "hãy tạo cho tôi {count} video với {count} ảnh tham chiếu trên với promt : {code}";
     }
+    if (specialCodeInput) {
+        specialCodeInput.value = "Transform the provided image into a 10-second premium editorial";
+    }
+    updateRPAPrefixPreview();
+    showToast("Đã khôi phục mẫu câu lệnh gốc và mã đặc biệt!", "info");
 }
 
 // Tự động chuẩn hóa khoảng cách: Mỗi đoạn cách nhau đúng 1 dòng trống (\n\n)
@@ -1474,10 +1488,10 @@ async function startRPAPrompter() {
     const delaySeconds = parseFloat(document.getElementById("rpaDelaySeconds")?.value) || 3;
     const stayInBackground = document.getElementById("rpaStayInBackground")?.checked ?? true;
     const rawBatchSize = parseInt(document.getElementById("rpaBatchSize")?.value, 10);
-    const batchSize = (!isNaN(rawBatchSize) && rawBatchSize > 0) ? rawBatchSize : 1;
+    const batchSize = (!isNaN(rawBatchSize) && rawBatchSize > 0) ? rawBatchSize : 4;
     const enablePrefixHeader = document.getElementById("rpaEnablePrefixHeader")?.checked ?? true;
-    const prefixTemplate = document.getElementById("rpaPrefixTemplate")?.value.trim() || "hãy tạo cho tôi {count} đợt {batch} {code}";
-    const specialCode = document.getElementById("rpaSpecialCode")?.value.trim() || "";
+    const prefixTemplate = document.getElementById("rpaPrefixTemplate")?.value.trim() || "hãy tạo cho tôi {count} video với {count} ảnh tham chiếu trên với promt : {code}";
+    const specialCode = document.getElementById("rpaSpecialCode")?.value.trim() || "Transform the provided image into a 10-second premium editorial";
 
     console.log("[Tune-Text] Cài đặt khởi chạy Robot:", { modeChoice, loopCount, isInfiniteLoop, durationMinutes, delaySeconds, stayInBackground, batchSize, enablePrefixHeader, prefixTemplate, specialCode });
 

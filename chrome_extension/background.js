@@ -159,10 +159,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const durationMinutes = parseFloat(rawData.durationMinutes || rawData.duration_minutes) || 0;
     const delaySeconds = parseFloat(rawData.delaySeconds || rawData.delay_between_prompts) || 3;
     const stayInBackground = rawData.stayInBackground !== false;
-    const batchSize = parseInt(rawData.batchSize || rawData.batch_size, 10) || 1;
+    const batchSize = parseInt(rawData.batchSize || rawData.batch_size, 10) || 4;
     const enablePrefixHeader = rawData.enablePrefixHeader !== false;
-    const prefixTemplate = rawData.prefixTemplate || "hãy tạo cho tôi {count} đợt {batch} {code}";
-    const specialCode = rawData.specialCode || "";
+    const prefixTemplate = rawData.prefixTemplate || "hãy tạo cho tôi {count} video với {count} ảnh tham chiếu trên với promt : {code}";
+    const specialCode = rawData.specialCode || "Transform the provided image into a 10-second premium editorial";
 
     const runOptions = {
       loopCount: loopCount,

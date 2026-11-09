@@ -18,7 +18,7 @@
   // Đánh dấu để trang Web biết Extension đã sẵn sàng
   function notifyWebPage() {
     document.documentElement.dataset.tuneTextExtension = "active";
-    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.3.0" } }));
+    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.3.1" } }));
   }
 
   notifyWebPage();
@@ -51,10 +51,10 @@
     const durationMinutes = parseFloat(payload.durationMinutes || payload.duration_minutes) || 0;
     const delaySeconds = parseFloat(payload.delaySeconds || payload.delay_between_prompts) || 3;
     const stayInBackground = payload.stayInBackground !== false;
-    const batchSize = parseInt(payload.batchSize || payload.batch_size, 10) || 1;
+    const batchSize = parseInt(payload.batchSize || payload.batch_size, 10) || 4;
     const enablePrefixHeader = payload.enablePrefixHeader !== false;
-    const prefixTemplate = payload.prefixTemplate || "hãy tạo cho tôi {count} đợt {batch} {code}";
-    const specialCode = payload.specialCode || "";
+    const prefixTemplate = payload.prefixTemplate || "hãy tạo cho tôi {count} video với {count} ảnh tham chiếu trên với promt : {code}";
+    const specialCode = payload.specialCode || "Transform the provided image into a 10-second premium editorial";
 
     const jobOptions = {
       loopCount: loopCount,

@@ -402,47 +402,49 @@
     return urls;
   }
 
-  // 4g. Đếm số lượng thẻ card media trên CỘT THƯ VIỆN BÊN PHẢI (Hỗ trợ khi URL ảnh/video động)
+  // 4g. Đếm số lượng ảnh hoặc video trên CỘT THƯ VIỆN BÊN PHẢI (Không bao giờ đếm các thẻ div lồng nhau)
   function getRightSideCardCount(type = "images") {
     let count = 0;
     try {
       const isImage = (type === "images" || type === "image" || type === "Hình ảnh");
 
-      // Nếu tab video đang hiển thị thông báo "Chưa có video nào" thì số lượng là 0
-      if (!isImage) {
-        const hasEmptyText = Array.from(document.querySelectorAll("p, div, span, h3")).some(el => {
-          if (!isRightSideMediaElement(el)) return false;
-          const t = (el.innerText || "").trim().toLowerCase();
-          return t.includes("chưa có video") || t.includes("no videos");
+      if (isImage) {
+        // ĐẾM CHÍNH XÁC CÁC THẺ <img> THỰC TẾ TRÊN CỘT THƯ VIỆN BÊN PHẢI
+        document.querySelectorAll("img").forEach(img => {
+          if (!isRightSideMediaElement(img)) return;
+          if (img.complete && (img.naturalWidth > 50 || img.naturalHeight > 50)) {
+            count++;
+          }
         });
-        if (hasEmptyText) return 0;
+        return count;
       }
 
-      document.querySelectorAll("div, article, a").forEach(el => {
-        if (!isRightSideMediaElement(el)) return;
-        if (el.closest && el.closest("#tune-text-hud")) return;
+      // Nếu là video: Nếu tab video đang hiển thị thông báo "Chưa có video nào" thì số lượng là 0
+      const hasEmptyText = Array.from(document.querySelectorAll("p, div, span, h3")).some(el => {
+        if (!isRightSideMediaElement(el)) return false;
+        const t = (el.innerText || "").trim().toLowerCase();
+        return t.includes("chưa có video") || t.includes("no videos");
+      });
+      if (hasEmptyText) return 0;
 
-        const rect = el.getBoundingClientRect();
-        if (rect.width >= 80 && rect.height >= 80 && rect.width < window.innerWidth * 0.7) {
-          if (isImage) {
-            const img = el.querySelector("img");
-            if (img && img.complete && (img.naturalWidth > 50 || img.naturalHeight > 50)) {
-              if (!el.parentElement || !el.parentElement.closest("div[role='article'], [class*='card']")) {
-                count++;
-              }
-            }
-          } else {
-            const hasPlay = el.querySelector && (
-              el.querySelector("svg polygon, svg path[d*='M'], [class*='play'], [aria-label*='play' i]") ||
-              (el.innerText && el.innerText.includes("▶"))
-            );
-            const hasVideo = el.querySelector && el.querySelector("video");
-            if (hasPlay || hasVideo) {
-              if (!el.parentElement || !el.parentElement.closest("div[role='article'], [class*='card']")) {
-                count++;
-              }
-            }
-          }
+      // Đếm các thẻ video hoặc thẻ có icon Play ▶ trên cột bên phải
+      const countedCards = new Set();
+      document.querySelectorAll("video").forEach(v => {
+        if (isRightSideMediaElement(v)) {
+          count++;
+          if (v.parentElement) countedCards.add(v.parentElement);
+        }
+      });
+
+      document.querySelectorAll("[class*='video'], [class*='media'], div[role='article']").forEach(el => {
+        if (!isRightSideMediaElement(el)) return;
+        if (countedCards.has(el)) return;
+        const hasPlay = (
+          el.querySelector && el.querySelector("svg polygon, svg path[d*='M'], [class*='play'], [aria-label*='play' i]")
+        ) || (el.innerText && el.innerText.includes("▶"));
+        if (hasPlay) {
+          count++;
+          countedCards.add(el);
         }
       });
     } catch (e) { }
@@ -465,9 +467,7 @@
       "svg.animate-spin",
       "[class*='animate-spin']",
       "[data-state='loading']",
-      "[aria-busy='true']",
-      "[class*='bubble']",
-      "[class*='searching']"
+      "[aria-busy='true']"
     ];
 
     for (const s of streamingSelectors) {
@@ -490,7 +490,7 @@
         false
       );
       let node;
-      const statusRegex = /(creating\s+(collage|image|video)|rendering\s+video|generating\s+(video|image)|searching\s+memory|creating\.\.\.|generating\.\.\.|rendering\.\.\.|processing\.\.\.|thinking\.\.\.|đang\s+tạo\s+(ảnh|video|hình)|đang\s+kết\s+xuất)/i;
+      const statusRegex = /(creating\s+(collage|image|video)|rendering\s+video|generating\s+(video|image)|creating\.\.\.|generating\.\.\.|rendering\.\.\.|processing\.\.\.|thinking\.\.\.|đang\s+tạo\s+(ảnh|video|hình)|đang\s+kết\s+xuất)/i;
 
       while ((node = walker.nextNode())) {
         const parent = node.parentElement;
@@ -706,20 +706,23 @@
 
       // 1. Đếm số lượng ảnh MỚI đã xuất hiện và nạp xong trên CỘT BÊN PHẢI (Loại trừ ảnh trong chat)
       let newImagesLoadedCount = 0;
+      let totalRightSideImages = 0;
       document.querySelectorAll("img").forEach(img => {
         if (!isRightSideMediaElement(img)) return; // CHỈ ĐẾM CỘT BÊN PHẢI!
         const src = img.currentSrc || img.src || img.getAttribute("src");
-        if (src && !initialImages.has(src.trim())) {
+        if (src && !src.startsWith("data:")) {
           if (img.complete && (img.naturalWidth > 50 || img.naturalHeight > 50)) {
-            newImagesLoadedCount++;
+            totalRightSideImages++;
+            if (!initialImages.has(src.trim())) {
+              newImagesLoadedCount++;
+            }
           }
         }
       });
 
-      // Đếm thẻ card ảnh bên phải (fallback khi URL động)
-      const currentCards = getRightSideCardCount("images");
-      const newCardsCount = Math.max(0, currentCards - initialCardCount);
-      const finalCount = Math.max(newImagesLoadedCount, newCardsCount);
+      // Đếm theo độ tăng tổng số ảnh trên cột bên phải
+      const newByTotalCount = Math.max(0, totalRightSideImages - initialCardCount);
+      const finalCount = Math.max(newImagesLoadedCount, newByTotalCount);
 
       // 2. Kiểm tra xem có spinner thực tế nào đang quay không
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
@@ -740,7 +743,12 @@
             break;
           }
         } else {
-          stableCount = 0;
+          // Ngay cả khi isGenerating còn vướng văn bản trên giao diện, nếu đã đủ ảnh và ổn định 4 giây thì vẫn tiếp tục
+          stableCount++;
+          if (stableCount >= 4) {
+            console.log(`[Tune-Text] ✅ ĐÃ CÓ ĐỦ ${finalCount}/${expectedCount} ẢNH MỚI BÊN PHẢI (Timeout ổn định)! Chuyển ngay sang Bước 2.`);
+            break;
+          }
         }
       } else {
         stableCount = 0;
@@ -997,10 +1005,10 @@
     const loopCount = isInfinite ? 999999 : ((!isNaN(parsedLoop) && parsedLoop > 0) ? parsedLoop : 1);
     const delayBetweenLoops = parseFloat(options.delaySeconds || options.delay_between_prompts) || 3;
     const totalPromptsPerLoop = prompts.length;
-    const batchSize = Math.max(1, parseInt(options.batchSize || options.batch_size, 10) || 1);
+    const batchSize = Math.max(1, parseInt(options.batchSize || options.batch_size, 10) || 4);
     const enablePrefixHeader = (options.enablePrefixHeader !== false);
-    const prefixTemplate = options.prefixTemplate || "hãy tạo cho tôi {count} đợt {batch} {code}";
-    const specialCode = (options.specialCode || "").trim();
+    const prefixTemplate = options.prefixTemplate || "hãy tạo cho tôi {count} video với {count} ảnh tham chiếu trên với promt : {code}";
+    const specialCode = (options.specialCode || "Transform the provided image into a 10-second premium editorial").trim();
     const targetVideoFolder = options.folderName || "prompts_video";
 
     // Luôn bắt đầu đếm số thứ tự video từ 1 cho mỗi thư mục
@@ -1344,9 +1352,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.0
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.1
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.3.0" });
+      sendResponse({ pong: true, version: "1.3.1" });
       return;
     }
 
@@ -1369,7 +1377,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.0) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.1) =====");
       console.log("  request.targetUrl          =", request.targetUrl);
       console.log("  request.platformCode       =", request.platformCode);
       console.log("  request.loopCount          =", request.loopCount, typeof request.loopCount);
@@ -1393,12 +1401,12 @@
       }
       const rawBatchSize = request.batchSize || request.batch_size || opts.batchSize || opts.batch_size;
       const parsedBatchSize = parseInt(rawBatchSize, 10);
-      opts.batchSize = (parsedBatchSize && parsedBatchSize > 0) ? parsedBatchSize : 1;
+      opts.batchSize = (parsedBatchSize && parsedBatchSize > 0) ? parsedBatchSize : 4;
       opts.batch_size = opts.batchSize;
 
       opts.enablePrefixHeader = (request.enablePrefixHeader !== undefined) ? request.enablePrefixHeader : (opts.enablePrefixHeader !== undefined ? opts.enablePrefixHeader : true);
-      opts.prefixTemplate = request.prefixTemplate || opts.prefixTemplate || "hãy tạo cho tôi {count} đợt {batch} {code}";
-      opts.specialCode = request.specialCode || opts.specialCode || "";
+      opts.prefixTemplate = request.prefixTemplate || opts.prefixTemplate || "hãy tạo cho tôi {count} video với {count} ảnh tham chiếu trên với promt : {code}";
+      opts.specialCode = request.specialCode || opts.specialCode || "Transform the provided image into a 10-second premium editorial";
       opts.folderName = request.folderName || opts.folderName || "prompts_video";
 
       opts.durationMinutes = parseFloat(request.durationMinutes || opts.durationMinutes) || 0;
