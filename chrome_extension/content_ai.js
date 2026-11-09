@@ -320,7 +320,7 @@
   function isAIGenerating(customStopSelector = "") {
     if (findStopButton(customStopSelector)) return true;
 
-    // 1. Selector streaming, spinner và loading indicator (Hỗ trợ ChatGPT, Claude, Gemini, DeepSeek, Muse, Kling...)
+    // 1. Selector streaming, spinner hoạt ảnh đang quay thực tế
     const streamingSelectors = [
       ".result-streaming",
       "[data-is-streaming='true']",
@@ -332,16 +332,7 @@
       "svg.animate-spin",
       "[class*='animate-spin']",
       "[data-state='loading']",
-      "[aria-busy='true']",
-      "[class*='loader']",
-      "[class*='spinner']",
-      "[class*='loading']",
-      "[class*='skeleton']",
-      "[class*='placeholder']",
-      "[class*='shimmer']",
-      "progress",
-      "[role='progressbar']",
-      "[class*='progress']"
+      "[aria-busy='true']"
     ];
 
     for (const s of streamingSelectors) {
@@ -355,7 +346,7 @@
       } catch (e) { }
     }
 
-    // 2. Nhận diện các từ khóa trạng thái đặc thù của Muse.ai & các AI Studio (TreeWalker nhanh < 2ms trên toàn bộ DOM)
+    // 2. Nhận diện các từ khóa trạng thái tạo ảnh/video cụ thể
     try {
       const walker = document.createTreeWalker(
         document.body,
@@ -364,7 +355,7 @@
         false
       );
       let node;
-      const statusRegex = /(creating\s*(collage|image|video|prompt)?|rendering\s*(video)?|generating\s*(video|image)?|generating\.\.\.|creating\.\.\.|rendering\.\.\.|processing\.\.\.|in\s*queue|queued|waiting|upscaling|vui\s*lòng\s*chờ|đang\s*tạo|đang\s*kết\s*xuất|đang\s*xử\s*lý|\b\d{1,2}%\b)/i;
+      const statusRegex = /(creating\s+(collage|image|video)|rendering\s+video|generating\s+(video|image)|creating\.\.\.|generating\.\.\.|rendering\.\.\.|processing\.\.\.|đang\s+tạo\s+(ảnh|video|hình)|đang\s+kết\s+xuất)/i;
 
       while ((node = walker.nextNode())) {
         const parent = node.parentElement;
@@ -372,7 +363,7 @@
         if (!parent || (parent.closest && parent.closest("#tune-text-hud"))) continue;
 
         const txt = (node.nodeValue || "").trim();
-        if (!txt || txt.length > 100) continue;
+        if (!txt || txt.length > 80) continue;
         if (statusRegex.test(txt)) {
           if (isElementVisible(parent)) {
             return true;
@@ -595,33 +586,47 @@
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return;
 
+      // 1. Kiểm tra xem đã có ảnh mới xuất hiện và nạp xong khung hình chưa
+      let completedImageFound = false;
+      let newImageCount = 0;
+      document.querySelectorAll("img").forEach(img => {
+        if (img.closest && img.closest("#tune-text-hud")) return;
+        const src = img.currentSrc || img.src || img.getAttribute("src");
+        if (src && !initialImages.has(src.trim()) && isElementVisible(img)) {
+          if (img.complete && (img.naturalWidth > 40 || img.naturalHeight > 40)) {
+            completedImageFound = true;
+            newImageCount++;
+          }
+        }
+      });
+
+      // 2. Kiểm tra xem có spinner thực tế nào đang quay không
+      const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
       const generatingNow = isAIGenerating(customStopSelector);
-      if (generatingNow) {
+
+      // NẾU ĐÃ CÓ ẢNH MỚI XUẤT HIỆN VÀ KHÔNG CÒN SPINNER QUAY:
+      if (completedImageFound && !hasActiveSpinner) {
+        stableCount++;
+        if (stableCount >= 2) {
+          console.log(`[Tune-Text] ✅ Đã tìm thấy ${newImageCount} ảnh mới tạo xong 100%! Chuyển ngay sang Bước 2 (Gõ câu lệnh tạo video).`);
+          break;
+        }
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+
+      // NẾU AI VẪN ĐANG XỬ LÝ (Có spinner hoặc trạng thái generating):
+      if (generatingNow || hasActiveSpinner) {
         hasStarted = true;
         stableCount = 0;
         await new Promise(r => setTimeout(r, 1000));
         continue;
       }
 
-      // Kiểm tra xem đã có ảnh mới xuất hiện và ảnh đó đã nạp xong chưa
-      let completedImageFound = false;
-      document.querySelectorAll("img").forEach(img => {
-        if (img.closest && img.closest("#tune-text-hud")) return;
-        const src = img.currentSrc || img.src || img.getAttribute("src");
-        if (src && !initialImages.has(src.trim()) && isElementVisible(img)) {
-          if (img.complete && (img.naturalWidth > 50 || img.naturalHeight > 50)) {
-            completedImageFound = true;
-            newImageFound = true;
-          }
-        }
-      });
-
       stableCount++;
-      // Nếu đã phát hiện ảnh mới hoàn chỉnh, chỉ cần 2 giây AI rảnh là chuyển sang Bước 2 ngay lập tức!
-      // Nếu chưa phát hiện (ảnh blob hoặc DOM ẩn), chờ 4 giây AI rảnh là chuyển tiếp an toàn!
-      const requiredStable = (newImageFound || completedImageFound) ? 2 : 4;
-      if (stableCount >= requiredStable) {
-        console.log(`[Tune-Text] Đã xác nhận tạo ảnh hoàn tất (Ổn định ${stableCount}s). Chuyển sang Bước 2!`);
+      // Nếu không có spinner và AI rảnh rỗi trong 4 giây liên tiếp => chuyển bước an toàn
+      if (stableCount >= 4) {
+        console.log(`[Tune-Text] AI đã rảnh rỗi ${stableCount}s. Chuyển sang Bước 2!`);
         break;
       }
       await new Promise(r => setTimeout(r, 1000));
@@ -635,7 +640,6 @@
   async function waitForVideoGeneration(initialVideos, maxWaitMs = 600000, customStopSelector = "") {
     const start = Date.now();
     let hasStarted = false;
-    let readyVideoFound = false;
 
     // Chờ tối thiểu 3 giây đầu để lệnh gửi đi và AI bắt đầu quá trình tạo video
     await new Promise(r => setTimeout(r, 3000));
@@ -663,16 +667,9 @@
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return;
 
-      const generatingNow = isAIGenerating(customStopSelector);
-      if (generatingNow) {
-        hasStarted = true;
-        stableCount = 0;
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
-
-      // Quét kiểm tra video mới đã hoàn thiện và sẵn sàng phát chưa
+      // 1. Quét kiểm tra video mới đã hoàn thiện và sẵn sàng phát chưa
       let curReady = false;
+      let newVideoCount = 0;
       document.querySelectorAll("video").forEach(v => {
         if (v.closest && v.closest("#tune-text-hud")) return;
         const s = v.currentSrc || v.src || v.querySelector("source")?.src;
@@ -680,7 +677,7 @@
           // Video đã sẵn sàng nếu nạp xong metadata (readyState >= 2) hoặc duration > 0
           if (v.readyState >= 2 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
             curReady = true;
-            readyVideoFound = true;
+            newVideoCount++;
           }
         }
       });
@@ -690,22 +687,36 @@
         const href = a.href;
         if (href && !initialVideos.has(href.trim()) && isElementVisible(a)) {
           curReady = true;
-          readyVideoFound = true;
+          newVideoCount++;
         }
       });
 
-      // Nếu đã bắt đầu xử lý nhưng chưa có video hoàn chỉnh, và chưa quá 2 phút => tiếp tục kiên nhẫn chờ
-      if (hasStarted && !curReady && (Date.now() - start < 120000)) {
+      const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
+      const generatingNow = isAIGenerating(customStopSelector);
+
+      // NẾU ĐÃ CÓ VIDEO MỚI SẴN SÀNG VÀ KHÔNG CÒN SPINNER QUAY:
+      if (curReady && !hasActiveSpinner) {
+        stableCount++;
+        if (stableCount >= 2) {
+          console.log(`[Tune-Text] ✅ Đã tìm thấy ${newVideoCount} video mới sẵn sàng! Chuyển sang Bước 3 (Tải video).`);
+          break;
+        }
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+
+      // Nếu AI vẫn đang render video:
+      if (generatingNow || hasActiveSpinner) {
+        hasStarted = true;
         stableCount = 0;
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 1000));
         continue;
       }
 
       stableCount++;
-      // Đảm bảo không còn bất kỳ spinner, loader: 2 giây nếu có video ready, 5 giây nếu không
-      const targetStable = readyVideoFound ? 2 : 5;
-      if (stableCount >= targetStable) {
-        console.log(`[Tune-Text] Đã xác nhận tạo video hoàn tất (Ổn định ${stableCount}s). Chuyển sang tải video!`);
+      // Nếu đã chờ và AI rảnh rỗi trong 5 giây liên tiếp:
+      if (stableCount >= 5) {
+        console.log(`[Tune-Text] AI đã rảnh rỗi ${stableCount}s. Chuyển sang tải video!`);
         break;
       }
       await new Promise(r => setTimeout(r, 1000));

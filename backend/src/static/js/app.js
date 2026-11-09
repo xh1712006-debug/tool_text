@@ -943,11 +943,7 @@ window.addEventListener("TUNE_TEXT_EXTENSION_ACTIVE", (e) => {
     }
     if (versionText) {
         versionText.textContent = `Đã kết nối Tab bên cạnh (v${detectedExtensionVersion})`;
-        if (detectedExtensionVersion !== "1.1.0") {
-            versionText.style.color = "#f59e0b"; // Màu vàng cam cảnh báo bản cũ
-        } else {
-            versionText.style.color = "#86efac"; // Màu xanh lá bản mới nhất
-        }
+        versionText.style.color = "#86efac"; // Màu xanh lá kết nối tốt
     }
     if (btnReload) {
         btnReload.classList.remove("hidden");
