@@ -320,15 +320,7 @@
   function isAIGenerating(customStopSelector = "") {
     if (findStopButton(customStopSelector)) return true;
 
-    // 1. Kiểm tra nút Gửi (Send Button): Nếu nút gửi đang bị disabled hoặc ẩn, AI đang xử lý!
-    const sendBtn = findSendButton();
-    if (sendBtn) {
-      if (sendBtn.disabled || sendBtn.getAttribute("aria-disabled") === "true" || sendBtn.classList.contains("disabled")) {
-        return true;
-      }
-    }
-
-    // 2. Selector streaming, spinner và loading indicator (Hỗ trợ ChatGPT, Claude, Gemini, DeepSeek, Muse, Kling...)
+    // 1. Selector streaming, spinner và loading indicator (Hỗ trợ ChatGPT, Claude, Gemini, DeepSeek, Muse, Kling...)
     const streamingSelectors = [
       ".result-streaming",
       "[data-is-streaming='true']",
@@ -347,7 +339,6 @@
       "[class*='skeleton']",
       "[class*='placeholder']",
       "[class*='shimmer']",
-      "[class*='dots']",
       "progress",
       "[role='progressbar']",
       "[class*='progress']"
@@ -357,12 +348,14 @@
       try {
         const elements = document.querySelectorAll(s);
         for (const el of elements) {
+          // Tuyệt đối không kiểm tra các phần tử nằm trong chính HUD của Tune-Text
+          if (el.closest && el.closest("#tune-text-hud")) continue;
           if (isElementVisible(el)) return true;
         }
       } catch (e) { }
     }
 
-    // 3. Nhận diện các từ khóa trạng thái đặc thù của Muse.ai & các AI Studio (TreeWalker nhanh < 2ms trên toàn bộ DOM)
+    // 2. Nhận diện các từ khóa trạng thái đặc thù của Muse.ai & các AI Studio (TreeWalker nhanh < 2ms trên toàn bộ DOM)
     try {
       const walker = document.createTreeWalker(
         document.body,
@@ -374,11 +367,14 @@
       const statusRegex = /(creating\s*(collage|image|video|prompt)?|rendering\s*(video)?|generating\s*(video|image)?|generating\.\.\.|creating\.\.\.|rendering\.\.\.|processing\.\.\.|in\s*queue|queued|waiting|upscaling|vui\s*lòng\s*chờ|đang\s*tạo|đang\s*kết\s*xuất|đang\s*xử\s*lý|\b\d{1,2}%\b)/i;
 
       while ((node = walker.nextNode())) {
+        const parent = node.parentElement;
+        // Bỏ qua nếu dòng chữ này nằm trong chính thanh HUD của Tune-Text
+        if (!parent || (parent.closest && parent.closest("#tune-text-hud"))) continue;
+
         const txt = (node.nodeValue || "").trim();
         if (!txt || txt.length > 100) continue;
         if (statusRegex.test(txt)) {
-          const parent = node.parentElement;
-          if (parent && isElementVisible(parent)) {
+          if (isElementVisible(parent)) {
             return true;
           }
         }
@@ -607,9 +603,10 @@
         continue;
       }
 
-      // Kiểm tra xem đã có ảnh mới xuất hiện và ảnh đó đã nạp xong (naturalWidth > 50) chưa
+      // Kiểm tra xem đã có ảnh mới xuất hiện và ảnh đó đã nạp xong chưa
       let completedImageFound = false;
       document.querySelectorAll("img").forEach(img => {
+        if (img.closest && img.closest("#tune-text-hud")) return;
         const src = img.currentSrc || img.src || img.getAttribute("src");
         if (src && !initialImages.has(src.trim()) && isElementVisible(img)) {
           if (img.complete && (img.naturalWidth > 50 || img.naturalHeight > 50)) {
@@ -619,24 +616,19 @@
         }
       });
 
-      // Nếu AI đã bắt đầu xử lý nhưng chưa thấy ảnh mới hoàn tất, tiếp tục kiên nhẫn chờ
-      if (hasStarted && !completedImageFound && (Date.now() - start < 60000)) {
-        stableCount = 0;
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
-
       stableCount++;
-      // Đảm bảo không còn bất kỳ spinner, loader hay trạng thái 'Creating...' trong ít nhất 4-6 giây liên tiếp
-      const requiredStable = (newImageFound || completedImageFound) ? 4 : 6;
+      // Nếu đã phát hiện ảnh mới hoàn chỉnh, chỉ cần 2 giây AI rảnh là chuyển sang Bước 2 ngay lập tức!
+      // Nếu chưa phát hiện (ảnh blob hoặc DOM ẩn), chờ 4 giây AI rảnh là chuyển tiếp an toàn!
+      const requiredStable = (newImageFound || completedImageFound) ? 2 : 4;
       if (stableCount >= requiredStable) {
+        console.log(`[Tune-Text] Đã xác nhận tạo ảnh hoàn tất (Ổn định ${stableCount}s). Chuyển sang Bước 2!`);
         break;
       }
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    // Đệm thêm 3 giây để hình ảnh render hoàn tất và ô chat mở khóa trở lại
-    await new Promise(r => setTimeout(r, 3000));
+    // Đệm thêm 1.5 giây để giao diện ổn định và ô chat mở khóa trở lại
+    await new Promise(r => setTimeout(r, 1500));
   }
 
   // 10b. Chờ AI xử lý và kết xuất VIDEO xong hoàn toàn (Bước 2)
@@ -645,11 +637,11 @@
     let hasStarted = false;
     let readyVideoFound = false;
 
-    // Chờ tối thiểu 4 giây đầu để lệnh gửi đi và AI bắt đầu quá trình tạo video
-    await new Promise(r => setTimeout(r, 4000));
+    // Chờ tối thiểu 3 giây đầu để lệnh gửi đi và AI bắt đầu quá trình tạo video
+    await new Promise(r => setTimeout(r, 3000));
 
-    // Bước A: Chờ tối đa 45 giây để AI BẮT ĐẦU xử lý video
-    for (let i = 0; i < 90; i++) {
+    // Bước A: Chờ tối đa 30 giây để AI BẮT ĐẦU xử lý video
+    for (let i = 0; i < 60; i++) {
       if (stopRequested) return;
       if (isAIGenerating(customStopSelector)) {
         hasStarted = true;
@@ -667,7 +659,6 @@
     }
 
     // Bước B: Chờ cho tới khi VIDEO được sinh xong hoàn toàn
-    // Quá trình tạo video mất nhiều thời gian (30 giây đến 3 phút), tuyệt đối KHÔNG ngắt sớm!
     let stableCount = 0;
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return;
@@ -683,6 +674,7 @@
       // Quét kiểm tra video mới đã hoàn thiện và sẵn sàng phát chưa
       let curReady = false;
       document.querySelectorAll("video").forEach(v => {
+        if (v.closest && v.closest("#tune-text-hud")) return;
         const s = v.currentSrc || v.src || v.querySelector("source")?.src;
         if (s && !initialVideos.has(s.trim()) && isElementVisible(v)) {
           // Video đã sẵn sàng nếu nạp xong metadata (readyState >= 2) hoặc duration > 0
@@ -694,6 +686,7 @@
       });
 
       document.querySelectorAll("a[href*='.mp4'], a[href*='.webm']").forEach(a => {
+        if (a.closest && a.closest("#tune-text-hud")) return;
         const href = a.href;
         if (href && !initialVideos.has(href.trim()) && isElementVisible(a)) {
           curReady = true;
@@ -702,23 +695,24 @@
       });
 
       // Nếu đã bắt đầu xử lý nhưng chưa có video hoàn chỉnh, và chưa quá 2 phút => tiếp tục kiên nhẫn chờ
-      if (hasStarted && !curReady && (Date.now() - start < 150000)) {
+      if (hasStarted && !curReady && (Date.now() - start < 120000)) {
         stableCount = 0;
         await new Promise(r => setTimeout(r, 1500));
         continue;
       }
 
       stableCount++;
-      // Đảm bảo không còn bất kỳ spinner, loader trong 5-8 giây liên tiếp
-      const targetStable = readyVideoFound ? 5 : 8;
+      // Đảm bảo không còn bất kỳ spinner, loader: 2 giây nếu có video ready, 5 giây nếu không
+      const targetStable = readyVideoFound ? 2 : 5;
       if (stableCount >= targetStable) {
+        console.log(`[Tune-Text] Đã xác nhận tạo video hoàn tất (Ổn định ${stableCount}s). Chuyển sang tải video!`);
         break;
       }
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    // Đệm thêm 3 giây để tệp video sẵn sàng được tải về an toàn
-    await new Promise(r => setTimeout(r, 3000));
+    // Đệm thêm 2 giây để tệp video sẵn sàng được tải về an toàn
+    await new Promise(r => setTimeout(r, 2000));
   }
 
   // 10c. Chờ AI phản hồi xong nói chung
