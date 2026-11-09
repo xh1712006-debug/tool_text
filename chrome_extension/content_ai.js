@@ -288,32 +288,165 @@
     }
   }
 
-  // 4c. Chụp danh sách các ảnh đang hiển thị trên giao diện
-  function getVisibleImageUrls() {
+  // 4c. Phân biệt phần tử thuộc CỘT THƯ VIỆN MEDIA BÊN PHẢI (Loại bỏ 100% cột chat bên trái và HUD)
+  function isRightSideMediaElement(el) {
+    if (!el || !isElementVisible(el)) return false;
+    if (el.closest && el.closest("#tune-text-hud")) return false;
+
+    // Loại trừ tuyệt đối các phần tử nằm trong cột chat / hội thoại tin nhắn bên trái
+    if (el.closest && el.closest("[class*='chat' i], [class*='message' i], [class*='conversation' i], [class*='thread' i], [class*='dialog' i]")) {
+      return false;
+    }
+
+    // Loại trừ ô nhập prompt và các nút chat bên trái
+    if (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable || el.getAttribute("role") === "textbox") {
+      return false;
+    }
+
+    // Xác định ranh giới cột chat bên trái dựa theo ô nhập chat hoặc tỷ lệ màn hình
+    let splitX = window.innerWidth * 0.28;
+    try {
+      const inputBox = findAIInputBox();
+      if (inputBox) {
+        const rectBox = inputBox.getBoundingClientRect();
+        if (rectBox.right > 0 && rectBox.right < window.innerWidth * 0.6) {
+          splitX = rectBox.right;
+        }
+      }
+    } catch (e) { }
+
+    const rect = el.getBoundingClientRect();
+    return rect.left >= (splitX - 15);
+  }
+
+  // 4d. Tự động chuyển đổi giữa tab "Hình ảnh" và "Video" trên giao diện Muse.ai
+  async function switchMediaTab(tabType) {
+    // tabType: "Hình ảnh" hoặc "Video" (hoặc "images" / "video")
+    const isImage = (tabType === "Hình ảnh" || tabType === "images" || tabType === "image");
+    const targetParam = isImage ? "view=images" : "view=video";
+    const targetLabel = isImage ? "Hình ảnh" : "Video";
+
+    console.log(`[Tune-Text] Chuyển tab thư viện sang: '${targetLabel}' (${targetParam})...`);
+
+    // 1. Kiểm tra xem URL hiện tại đã ở đúng tab chưa
+    try {
+      const currentUrl = new URL(window.location.href);
+      if (currentUrl.searchParams.get("view") === (isImage ? "images" : "video")) {
+        console.log(`[Tune-Text] Đang ở sẵn tab '${targetLabel}'.`);
+        return true;
+      }
+    } catch (e) { }
+
+    // 2. Tìm thẻ <a> có href chứa view=images / view=video
+    const directLink = document.querySelector(`a[href*='${targetParam}']`);
+    if (directLink) {
+      directLink.click();
+      console.log(`[Tune-Text] Đã click thẻ <a> chuyển tab:`, directLink);
+      await new Promise(r => setTimeout(r, 1200));
+      return true;
+    }
+
+    // 3. Tìm phần tử click được có text "Hình ảnh" hoặc "Video" ở thanh menu File phương tiện
+    const candidateElements = document.querySelectorAll("a, button, div[role='button'], li, div, span, p");
+    for (const el of candidateElements) {
+      if (el.closest && el.closest("#tune-text-hud")) continue;
+      if (el.tagName === "H1" || el.tagName === "H2") continue;
+
+      const txt = (el.innerText || el.textContent || "").trim();
+      if (txt === targetLabel) {
+        // Bỏ qua nếu là nút "+ Tạo hình ảnh" hay "+ Tạo video"
+        const parentBtn = el.closest("button");
+        if (parentBtn && (parentBtn.textContent || "").includes("Tạo")) continue;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          const clickable = el.closest("a, button, div[role='button'], li") || el;
+          clickable.click();
+          console.log(`[Tune-Text] Đã click phần tử menu '${targetLabel}':`, clickable);
+          await new Promise(r => setTimeout(r, 1200));
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  // 4e. Lấy danh sách ảnh hiển thị trên CỘT THƯ VIỆN BÊN PHẢI (Loại bỏ ảnh trong chat)
+  function getRightSideImageUrls() {
     const urls = new Set();
     try {
       document.querySelectorAll("img").forEach(img => {
+        if (!isRightSideMediaElement(img)) return; // BỎ QUA ẢNH TRONG CHAT
         const src = img.currentSrc || img.src || img.getAttribute("src");
-        if (src && !src.startsWith("data:") && isElementVisible(img)) {
+        if (src && !src.startsWith("data:")) {
           urls.add(src.trim());
         }
       });
-    } catch (e) {}
+    } catch (e) { }
     return urls;
   }
 
-  // 4d. Chụp danh sách các video đang hiển thị trên giao diện
-  function getVisibleVideoUrls() {
+  // 4f. Lấy danh sách video hiển thị trên CỘT THƯ VIỆN BÊN PHẢI
+  function getRightSideVideoUrls() {
     const urls = new Set();
     try {
       document.querySelectorAll("video, source, a[href*='.mp4'], a[href*='.webm']").forEach(el => {
+        if (!isRightSideMediaElement(el)) return;
         const src = el.currentSrc || el.src || el.href || el.getAttribute("src") || el.getAttribute("data-src") || el.getAttribute("data-video-url");
         if (src && !src.startsWith("data:") && (src.startsWith("http") || src.startsWith("blob:"))) {
           urls.add(src.trim());
         }
       });
-    } catch (e) {}
+    } catch (e) { }
     return urls;
+  }
+
+  // 4g. Đếm số lượng thẻ card media trên CỘT THƯ VIỆN BÊN PHẢI (Hỗ trợ khi URL ảnh/video động)
+  function getRightSideCardCount(type = "images") {
+    let count = 0;
+    try {
+      const isImage = (type === "images" || type === "image" || type === "Hình ảnh");
+
+      // Nếu tab video đang hiển thị thông báo "Chưa có video nào" thì số lượng là 0
+      if (!isImage) {
+        const hasEmptyText = Array.from(document.querySelectorAll("p, div, span, h3")).some(el => {
+          if (!isRightSideMediaElement(el)) return false;
+          const t = (el.innerText || "").trim().toLowerCase();
+          return t.includes("chưa có video") || t.includes("no videos");
+        });
+        if (hasEmptyText) return 0;
+      }
+
+      document.querySelectorAll("div, article, a").forEach(el => {
+        if (!isRightSideMediaElement(el)) return;
+        if (el.closest && el.closest("#tune-text-hud")) return;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width >= 80 && rect.height >= 80 && rect.width < window.innerWidth * 0.7) {
+          if (isImage) {
+            const img = el.querySelector("img");
+            if (img && img.complete && (img.naturalWidth > 50 || img.naturalHeight > 50)) {
+              if (!el.parentElement || !el.parentElement.closest("div[role='article'], [class*='card']")) {
+                count++;
+              }
+            }
+          } else {
+            const hasPlay = el.querySelector && (
+              el.querySelector("svg polygon, svg path[d*='M'], [class*='play'], [aria-label*='play' i]") ||
+              (el.innerText && el.innerText.includes("▶"))
+            );
+            const hasVideo = el.querySelector && el.querySelector("video");
+            if (hasPlay || hasVideo) {
+              if (!el.parentElement || !el.parentElement.closest("div[role='article'], [class*='card']")) {
+                count++;
+              }
+            }
+          }
+        }
+      });
+    } catch (e) { }
+    return count;
   }
 
   // 5. Kiểm tra AI có đang trong trạng thái bận sinh câu trả lời, ảnh hoặc video không
@@ -556,29 +689,37 @@
     return true;
   }
 
-  // 10a. Chờ AI tạo đủ số lượng HÌNH ẢNH của đợt này (Ví dụ: gửi 4 prompt -> chờ ra đủ 4 ảnh)
-  async function waitForImageGeneration(initialImages, expectedCount = 1, maxWaitMs = 360000, customStopSelector = "") {
+  // 10a. Chờ AI tạo đủ số lượng HÌNH ẢNH của đợt này TRÊN CỘT THƯ VIỆN BÊN PHẢI
+  async function waitForImageGeneration(initialImages, initialCardCount = 0, expectedCount = 1, maxWaitMs = 360000, customStopSelector = "") {
     const start = Date.now();
     let stableCount = 0;
+
+    // Đảm bảo tab đang ở view "Hình ảnh"
+    await switchMediaTab("Hình ảnh");
 
     // Chờ tối thiểu 3 giây đầu để AI tiếp nhận prompt qua mạng
     await new Promise(r => setTimeout(r, 3000));
 
-    // Bước B: Chờ cho tới khi AI sinh đủ số lượng ảnh
+    // Bước B: Chờ cho tới khi thư viện bên phải xuất hiện đủ số lượng ảnh mới
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return;
 
-      // 1. Đếm số lượng ảnh MỚI đã xuất hiện và nạp xong khung hình
+      // 1. Đếm số lượng ảnh MỚI đã xuất hiện và nạp xong trên CỘT BÊN PHẢI (Loại trừ ảnh trong chat)
       let newImagesLoadedCount = 0;
       document.querySelectorAll("img").forEach(img => {
-        if (img.closest && img.closest("#tune-text-hud")) return;
+        if (!isRightSideMediaElement(img)) return; // CHỈ ĐẾM CỘT BÊN PHẢI!
         const src = img.currentSrc || img.src || img.getAttribute("src");
-        if (src && !initialImages.has(src.trim()) && isElementVisible(img)) {
-          if (img.complete && (img.naturalWidth > 40 || img.naturalHeight > 40)) {
+        if (src && !initialImages.has(src.trim())) {
+          if (img.complete && (img.naturalWidth > 50 || img.naturalHeight > 50)) {
             newImagesLoadedCount++;
           }
         }
       });
+
+      // Đếm thẻ card ảnh bên phải (fallback khi URL động)
+      const currentCards = getRightSideCardCount("images");
+      const newCardsCount = Math.max(0, currentCards - initialCardCount);
+      const finalCount = Math.max(newImagesLoadedCount, newCardsCount);
 
       // 2. Kiểm tra xem có spinner thực tế nào đang quay không
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
@@ -586,23 +727,22 @@
 
       // Cập nhật tiến độ trực quan lên thanh HUD
       updateHUD(
-        `⏳ Đang chờ tạo đủ ${expectedCount} ảnh... (Đã có ${newImagesLoadedCount}/${expectedCount} ảnh)`,
+        `⏳ Đang chờ tạo đủ ${expectedCount} ảnh (Thư viện phải)... (Đã có ${finalCount}/${expectedCount} ảnh)`,
         null, null, "", false
       );
 
       // NẾU ĐÃ RA ĐỦ HOẶC VƯỢT SỐ LƯỢNG ẢNH CỦA ĐỢT NÀY (Ví dụ: 4/4 ảnh):
-      if (newImagesLoadedCount >= expectedCount) {
+      if (finalCount >= expectedCount) {
         if (!hasActiveSpinner && !isGenerating) {
           stableCount++;
           if (stableCount >= 2) {
-            console.log(`[Tune-Text] ✅ ĐÃ TẠO ĐỦ ${newImagesLoadedCount}/${expectedCount} ẢNH MỚI! Chuyển ngay sang Bước 2.`);
+            console.log(`[Tune-Text] ✅ ĐÃ TẠO ĐỦ ${finalCount}/${expectedCount} ẢNH MỚI BÊN PHẢI! Chuyển ngay sang Bước 2.`);
             break;
           }
         } else {
           stableCount = 0;
         }
       } else {
-        // Chưa đủ số lượng ảnh mong muốn, kiên nhẫn chờ AI sinh tiếp
         stableCount = 0;
       }
 
@@ -633,27 +773,30 @@
     return false;
   }
 
-  // 10b. Chờ AI tạo đủ số lượng VIDEO của đợt này (Ví dụ: đợt 4 video -> chờ ra đủ 4 video mới)
-  async function waitForVideoGeneration(initialVideos, expectedCount = 1, maxWaitMs = 600000, customStopSelector = "") {
+  // 10b. Chờ AI tạo đủ số lượng VIDEO của đợt này TRÊN CỘT THƯ VIỆN BÊN PHẢI (với nút Play ▶)
+  async function waitForVideoGeneration(initialVideos, initialVideoCardCount = 0, expectedCount = 1, maxWaitMs = 600000, customStopSelector = "") {
     const start = Date.now();
     let stableCount = 0;
+
+    // Đảm bảo tab đang ở view "Video"
+    await switchMediaTab("Video");
 
     // Chờ tối thiểu 4 giây đầu để lệnh gửi đi và AI bắt đầu quá trình tạo video
     await new Promise(r => setTimeout(r, 4000));
 
     // Vòng lặp chờ VIDEO:
-    // TUYỆT ĐỐI CHỈ HOÀN THÀNH KHI ĐÃ CÓ ĐỦ SỐ LƯỢNG VIDEO MỚI (Ví dụ: 4/4 video)!
+    // TUYỆT ĐỐI CHỈ HOÀN THÀNH KHI ĐÃ CÓ ĐỦ SỐ LƯỢNG VIDEO MỚI (Ví dụ: 4/4 video) TRÊN CỘT BÊN PHẢI!
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return null;
 
-      // 1. Quét tìm tất cả các VIDEO MỚI
+      // 1. Quét tìm tất cả các VIDEO MỚI TRÊN CỘT THƯ VIỆN BÊN PHẢI
       const foundNewVideos = new Set();
 
       // a) Quét qua thẻ <video>
       document.querySelectorAll("video").forEach(v => {
-        if (v.closest && v.closest("#tune-text-hud")) return;
+        if (!isRightSideMediaElement(v)) return;
         const s = v.currentSrc || v.src || v.querySelector("source")?.src;
-        if (s && isVideoUrl(s) && !initialVideos.has(s.trim()) && isElementVisible(v)) {
+        if (s && isVideoUrl(s) && !initialVideos.has(s.trim())) {
           if (v.readyState >= 1 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
             foundNewVideos.add(s.trim());
           }
@@ -662,9 +805,9 @@
 
       // b) Quét qua thẻ <a> link video
       document.querySelectorAll("a[href*='.mp4'], a[href*='.webm'], a[download*='.mp4'], a[download*='.webm']").forEach(a => {
-        if (a.closest && a.closest("#tune-text-hud")) return;
+        if (!isRightSideMediaElement(a)) return;
         const href = a.href;
-        if (href && isVideoUrl(href) && !initialVideos.has(href.trim()) && isElementVisible(a)) {
+        if (href && isVideoUrl(href) && !initialVideos.has(href.trim())) {
           foundNewVideos.add(href.trim());
         }
       });
@@ -672,33 +815,44 @@
       // c) Quét qua các thẻ video card trên giao diện Muse.ai (các thẻ có nút Play ▶ trong tab Video)
       let customCardCount = 0;
       document.querySelectorAll("[class*='video'], [class*='media'], div[role='article']").forEach(el => {
-        if (el.closest && el.closest("#tune-text-hud")) return;
+        if (!isRightSideMediaElement(el)) return;
         const hasPlayBtn = el.querySelector && (
           el.querySelector("svg polygon, svg path[d*='M'], [class*='play'], [aria-label*='play' i]") ||
           (el.innerText && el.innerText.includes("▶"))
         );
-        if (hasPlayBtn && isElementVisible(el)) {
+        if (hasPlayBtn) {
           customCardCount++;
         }
       });
 
-      const currentNewVideoCount = Math.max(foundNewVideos.size, customCardCount);
+      // d) Kiểm tra thông báo "Chưa có video nào"
+      const hasEmptyNotice = Array.from(document.querySelectorAll("p, div, span, h3")).some(el => {
+        if (!isRightSideMediaElement(el)) return false;
+        const t = (el.innerText || "").trim().toLowerCase();
+        return t.includes("chưa có video") || t.includes("no videos");
+      });
+
+      // Fallback qua bộ đếm card
+      const currentVideoCards = getRightSideCardCount("video");
+      const newVideoCardsCount = Math.max(0, currentVideoCards - initialVideoCardCount);
+
+      const currentNewVideoCount = hasEmptyNotice ? 0 : Math.max(foundNewVideos.size, customCardCount, newVideoCardsCount);
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
       const isGenerating = isAIGenerating(customStopSelector);
 
       // Cập nhật tiến độ trực tiếp lên HUD: ví dụ "Đang chờ tạo đủ 4 video... (Đã có 2/4 video)"
       const elapsedSec = Math.floor((Date.now() - start) / 1000);
       updateHUD(
-        `⏳ Đang chờ tạo đủ ${expectedCount} video... (Đã có ${currentNewVideoCount}/${expectedCount}) [${elapsedSec}s]`,
+        `⏳ Đang chờ tạo đủ ${expectedCount} video (Thư viện phải)... (Đã có ${currentNewVideoCount}/${expectedCount}) [${elapsedSec}s]`,
         null, null, "", false
       );
 
-      // NẾU ĐÃ RA ĐỦ HOẶC VƯỢT SỐ LƯỢNG VIDEO CỦA ĐỢT NÀY (Ví dụ: 4/4 video):
-      if (currentNewVideoCount >= expectedCount) {
+      // NẾU ĐÃ RA ĐỦ HOẶC VƯỢT SỐ LƯỢNG VIDEO CỦA ĐỢT NÀY (Ví dụ: 4/4 video) VÀ KHÔNG BỊ BÁO TRỐNG:
+      if (currentNewVideoCount >= expectedCount && !hasEmptyNotice) {
         if (!hasActiveSpinner && !isGenerating) {
           stableCount++;
           if (stableCount >= 2) {
-            console.log(`[Tune-Text] ✅ ĐÃ RA ĐỦ ${currentNewVideoCount}/${expectedCount} VIDEO MỚI! Chuyển sang Bước 3 (Tải video).`);
+            console.log(`[Tune-Text] ✅ ĐÃ RA ĐỦ ${currentNewVideoCount}/${expectedCount} VIDEO MỚI BÊN PHẢI! Chuyển sang Bước 3 (Tải video).`);
             break;
           }
         } else {
@@ -718,7 +872,7 @@
 
   // 10c. Chờ AI phản hồi xong nói chung
   async function waitForAIFinish(maxWaitMs = 600000, customStopSelector = "") {
-    await waitForImageGeneration(new Set(), maxWaitMs, customStopSelector);
+    await waitForImageGeneration(new Set(), 0, 1, maxWaitMs, customStopSelector);
   }
 
   // 11. Tự động nhận diện và tải video sinh ra từ AI về thư mục tương ứng (video1, video2, video3...)
@@ -729,31 +883,48 @@
       if (!window.__ttDownloadedUrls) window.__ttDownloadedUrls = new Set();
       const candidates = [];
 
-      // 1. Quét tất cả thẻ <video> (CHỈ LẤY VIDEO ĐÃ SẴN SÀNG, BỎ QUA ẢNH)
+      // Ưu tiên 1: Quét các thẻ video trên cột bên phải
       document.querySelectorAll("video").forEach(v => {
-        if (v.closest && v.closest("#tune-text-hud")) return;
+        if (!isRightSideMediaElement(v)) return;
         const s = v.currentSrc || v.src || v.querySelector("source")?.src;
         if (s && isVideoUrl(s) && !s.startsWith("data:")) {
-          if (v.readyState >= 2 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
+          if (v.readyState >= 1 || v.duration > 0 || (v.videoWidth > 0 && v.videoHeight > 0)) {
             candidates.push(s);
           }
         }
       });
 
-      // 2. Quét thẻ <a> có đuôi video (TUYỆT ĐỐI KHÔNG QUÉT a[download] CHUNG CHUNG VÌ SẼ DÍNH ẢNH)
+      // Ưu tiên 2: Quét thẻ <a> có đuôi video trên cột bên phải
       document.querySelectorAll("a[href*='.mp4'], a[href*='.webm'], a[download*='.mp4'], a[download*='.webm']").forEach(a => {
-        if (a.closest && a.closest("#tune-text-hud")) return;
+        if (!isRightSideMediaElement(a)) return;
         if (a.href && isVideoUrl(a.href) && !a.href.startsWith("javascript:")) {
           candidates.push(a.href);
         }
       });
 
-      // 3. Quét các thuộc tính đặc trưng video
+      // Ưu tiên 3: Quét các thuộc tính đặc trưng video trên cột bên phải
       document.querySelectorAll("[data-video-url], [data-video], [data-src*='.mp4'], [data-src*='.webm']").forEach(el => {
-        if (el.closest && el.closest("#tune-text-hud")) return;
+        if (!isRightSideMediaElement(el)) return;
         const u = el.getAttribute("data-video-url") || el.getAttribute("data-video") || el.getAttribute("data-src");
         if (u && isVideoUrl(u)) candidates.push(u);
       });
+
+      // Fallback: Nếu không tìm thấy video nào ở bên phải (ví dụ trang AI dạng 1 cột như ChatGPT), quét toàn trang
+      if (candidates.length === 0) {
+        document.querySelectorAll("video").forEach(v => {
+          if (v.closest && v.closest("#tune-text-hud")) return;
+          const s = v.currentSrc || v.src || v.querySelector("source")?.src;
+          if (s && isVideoUrl(s) && !s.startsWith("data:")) {
+            candidates.push(s);
+          }
+        });
+        document.querySelectorAll("a[href*='.mp4'], a[href*='.webm'], a[download*='.mp4'], a[download*='.webm']").forEach(a => {
+          if (a.closest && a.closest("#tune-text-hud")) return;
+          if (a.href && isVideoUrl(a.href) && !a.href.startsWith("javascript:")) {
+            candidates.push(a.href);
+          }
+        });
+      }
 
       for (const rawUrl of candidates) {
         if (!rawUrl) continue;
@@ -919,6 +1090,15 @@
         // ==============================================================
         // BƯỚC 1: GỬI ĐOẠN VĂN BẢN (PROMPT CHÍNH) ➔ CHỜ TẠO HÌNH ẢNH XONG
         // ==============================================================
+        // 1a. TỰ ĐỘNG CHUYỂN SANG TAB "HÌNH ẢNH" TRƯỚC KHI TẠO ẢNH
+        updateHUD(`${loopPrefix} [1/2] Đang chuyển tab sang Hình ảnh...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
+        await switchMediaTab("Hình ảnh");
+        await new Promise(r => setTimeout(r, 1200));
+
+        // Chụp lại danh sách ảnh và số lượng card đã có trên cột bên phải trước khi gửi prompt
+        const preImages = getRightSideImageUrls();
+        const preImageCardCount = getRightSideCardCount("images");
+
         const promptText = currentBatch.combinedPrompt;
         updateHUD(`${loopPrefix} [1/2] Đang chuẩn bị gửi ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptText, false, currentLoop, loopCount, currentBatch.rangeLabel);
 
@@ -937,7 +1117,7 @@
           is_completed: false
         });
 
-        // 1a. Chờ AI rảnh và tìm ô chat
+        // 1b. Tìm ô chat bên trái
         let inputBox = await waitForAIReady(customInputSel);
         if (!inputBox) {
           await new Promise(r => setTimeout(r, 2000));
@@ -956,15 +1136,12 @@
           continue;
         }
 
-        // Chụp lại danh sách ảnh đã có trên trang trước khi gửi prompt tạo ảnh
-        const preImages = getVisibleImageUrls();
-
-        // 1b. Gõ toàn bộ nội dung đoạn văn bản và gửi đi
+        // 1c. Gõ toàn bộ nội dung đoạn văn bản và gửi đi trong ô chat bên trái
         updateHUD(`${loopPrefix} [1/2] Đang gõ ${batchProgressStr}...`, currentBatchIndex, totalBatchesPerLoop, promptText, false, currentLoop, loopCount, currentBatch.rangeLabel);
         await sendSinglePrompt(inputBox, promptText, customSendSel, customInputSel);
         if (stopRequested) break;
 
-        // 1c. Chờ AI tạo xong HÌNH ẢNH / COLLAGE hoàn toàn trước khi làm bước tiếp theo
+        // 1d. Chờ AI tạo xong HÌNH ẢNH hoàn toàn trên cột thư viện bên phải (Đủ số lượng đợt này)
         updateHUD(`${loopPrefix} [1/2] ${batchProgressStr}: Đang chờ AI tạo xong hình ảnh...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
         safeReportProgress(callerTabId, {
           current_index: currentBatchIndex,
@@ -973,7 +1150,7 @@
           log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI tạo xong hình ảnh cho ${batchProgressStr}...`,
           is_completed: false
         });
-        await waitForImageGeneration(preImages, currentBatch.count, 360000, customStopSel);
+        await waitForImageGeneration(preImages, preImageCardCount, currentBatch.count, 360000, customStopSel);
         if (stopRequested) break;
 
         safeReportProgress(callerTabId, {
@@ -985,9 +1162,11 @@
         });
 
         // ==============================================================
-        // BƯỚC 2: SAU KHI HÌNH ẢNH ĐÃ TẠO XONG ➔ MỚI GỬI TIẾP CÂU LỆNH
+        // BƯỚC 2: SAU KHI HÌNH ẢNH ĐÃ TẠO XONG ➔ GỬI CÂU LỆNH TẠO VIDEO & CHUYỂN SANG TAB VIDEO
         // ==============================================================
-        let preVideos = getVisibleVideoUrls();
+        let preVideos = new Set();
+        let preVideoCardCount = 0;
+
         if (enablePrefixHeader) {
           let cmdToSend = prefixTemplate
             .replace(/{count}/g, currentBatch.count)
@@ -1018,10 +1197,7 @@
             is_completed: false
           });
 
-          // Chụp lại toàn bộ video trước khi gửi lệnh tạo video để tuyệt đối không tải nhầm
-          preVideos = getVisibleVideoUrls();
-
-          // Tìm lại ô chat sau khi đã sinh ảnh
+          // Tìm lại ô chat bên trái sau khi đã sinh ảnh
           let cmdInputBox = await waitForAIReady(customInputSel);
           if (!cmdInputBox) {
             await new Promise(r => setTimeout(r, 2000));
@@ -1032,6 +1208,15 @@
             await sendSinglePrompt(cmdInputBox, cmdToSend, customSendSel, customInputSel);
             if (stopRequested) break;
 
+            // 2b. NGAY SAU KHI GỬI CÂU LỆNH TẠO VIDEO ➔ TỰ ĐỘNG CHUYỂN SANG TAB "VIDEO"
+            updateHUD(`${loopPrefix} [2/2] Đang chuyển tab sang Video...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
+            await switchMediaTab("Video");
+            await new Promise(r => setTimeout(r, 1500));
+
+            // Chụp lại toàn bộ video trên tab Video trước khi AI sinh video mới
+            preVideos = getRightSideVideoUrls();
+            preVideoCardCount = getRightSideCardCount("video");
+
             // Chờ AI xử lý xong câu lệnh (chuyển đổi thành video)
             updateHUD(`${loopPrefix} [2/2] ${batchProgressStr}: Đang chờ AI chuyển đổi thành video...`, currentBatchIndex, totalBatchesPerLoop, "", false, currentLoop, loopCount, currentBatch.rangeLabel);
             safeReportProgress(callerTabId, {
@@ -1041,7 +1226,7 @@
               log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI chuyển đổi thành video cho ${batchProgressStr}...`,
               is_completed: false
             });
-            await waitForVideoGeneration(preVideos, currentBatch.count, 600000, customStopSel);
+            await waitForVideoGeneration(preVideos, preVideoCardCount, currentBatch.count, 600000, customStopSel);
           }
         }
         if (stopRequested) break;
@@ -1159,9 +1344,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.2.2
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.0
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.2.2" });
+      sendResponse({ pong: true, version: "1.3.0" });
       return;
     }
 
@@ -1184,7 +1369,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.2.1) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.0) =====");
       console.log("  request.targetUrl          =", request.targetUrl);
       console.log("  request.platformCode       =", request.platformCode);
       console.log("  request.loopCount          =", request.loopCount, typeof request.loopCount);
