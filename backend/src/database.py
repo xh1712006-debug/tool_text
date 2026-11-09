@@ -3,28 +3,70 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from src.config import settings
 
-# Khởi tạo SQLAlchemy Engine với cơ chế pool_pre_ping để tự động khôi phục kết nối hỏng
-# Hỗ trợ kết nối PostgreSQL hoặc SQLite khi chạy kiểm thử
-connect_args = {}
-if settings.DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+import os
+import logging
+from typing import Generator
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from src.config import settings
 
-# Chuẩn hóa URL cho PostgreSQL nếu người dùng nhập postgresql://
-db_url = settings.DATABASE_URL
-if db_url.startswith("postgresql://"):
-    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
-
-engine = create_engine(
-    db_url,
-    pool_pre_ping=True,
-    connect_args=connect_args
-)
-
-# Phiên làm việc (Session) thao tác với CSDL
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+logger = logging.getLogger("src.database")
 
 # Lớp cơ sở (Base) cho toàn bộ các ORM Model
 Base = declarative_base()
+
+
+def create_resilient_engine_and_session():
+    """
+    Khởi tạo Engine và Session có cơ chế tự phục hồi (Self-Healing / Auto-Fallback).
+    Nếu máy chủ chưa cài đặt hoặc không kết nối được PostgreSQL, hệ thống sẽ tự động
+    chuyển sang SQLite cục bộ (tunetext_data.db) để đảm bảo đăng nhập và vận hành 100% không bị sập.
+    """
+    db_url = settings.DATABASE_URL or ""
+    connect_args = {}
+
+    if db_url.startswith("sqlite"):
+        connect_args = {"check_same_thread": False}
+        eng = create_engine(db_url, pool_pre_ping=True, connect_args=connect_args)
+        return eng, sessionmaker(autocommit=False, autoflush=False, bind=eng)
+
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    # Thử kết nối PostgreSQL với thời gian chờ 3 giây
+    if "postgresql" in db_url:
+        try:
+            pg_args = {"connect_timeout": 3}
+            eng = create_engine(db_url, pool_pre_ping=True, connect_args=pg_args)
+            with eng.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            logger.info("✅ Kết nối cơ sở dữ liệu PostgreSQL thành công.")
+            return eng, sessionmaker(autocommit=False, autoflush=False, bind=eng)
+        except Exception as pg_err:
+            logger.warning(
+                f"⚠️ Không thể kết nối tới PostgreSQL ({pg_err}).\n"
+                f"👉 Đang kích hoạt chế độ tự phục hồi: Thử chuyển sang SQLite cục bộ (tunetext_data.db)..."
+            )
+            try:
+                import sqlite3
+                sqlite_url = "sqlite:///tunetext_data.db"
+                sqlite_eng = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+                with sqlite_eng.connect() as s_conn:
+                    s_conn.execute(text("SELECT 1"))
+                logger.info("✅ Tự phục hồi thành công: Sử dụng CSDL SQLite cục bộ (tunetext_data.db).")
+                return sqlite_eng, sessionmaker(autocommit=False, autoflush=False, bind=sqlite_eng)
+            except Exception as sq_err:
+                logger.error(
+                    f"❌ Cả PostgreSQL lẫn SQLite đều không khả dụng (PG: {pg_err} | SQLite: {sq_err}). "
+                    f"Vui lòng bật dịch vụ PostgreSQL hoặc cấu hình DATABASE_URL trong .env."
+                )
+                return eng, sessionmaker(autocommit=False, autoflush=False, bind=eng)
+
+    eng = create_engine(db_url, pool_pre_ping=True, connect_args=connect_args)
+    return eng, sessionmaker(autocommit=False, autoflush=False, bind=eng)
+
+
+engine, SessionLocal = create_resilient_engine_and_session()
 
 
 def get_db() -> Generator[Session, None, None]:

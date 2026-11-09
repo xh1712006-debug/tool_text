@@ -114,7 +114,14 @@ async function fetchAPI(endpoint, options = {}) {
 
     const data = await response.json();
     if (!response.ok) {
-        throw new Error(data.error?.message || data.detail || "Đã xảy ra lỗi kết nối");
+        let msg = data.error?.message || data.detail || data.message || "Đã xảy ra lỗi kết nối";
+        if (data.error?.details && Array.isArray(data.error.details) && data.error.details.length > 0) {
+            const detailMsg = data.error.details.map(d => d.reason || d.issue || JSON.stringify(d)).join("; ");
+            if (detailMsg && !msg.includes(detailMsg)) {
+                msg += ` (${detailMsg})`;
+            }
+        }
+        throw new Error(msg);
     }
     return data;
 }

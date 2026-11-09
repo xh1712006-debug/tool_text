@@ -44,13 +44,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+import logging
+
+logger = logging.getLogger("src.error_handler")
+
+
 async def general_exception_handler(request: Request, exc: Exception):
     """
-    Bắt mọi ngoại lệ không mong muốn để ngăn chặn lộ thông tin hệ thống nhạy cảm.
+    Bắt mọi ngoại lệ không mong muốn, ghi log và trả về thông tin lỗi rõ ràng.
     """
+    err_msg = str(exc)
+    logger.error(f"Sự cố nội bộ tại {request.method} {request.url.path}: {err_msg}", exc_info=True)
     return error_response(
-        message="Hệ thống đã xảy ra sự cố nội bộ ngoài dự kiến. Vui lòng thử lại sau.",
+        message=f"Sự cố hệ thống: {err_msg}",
         code="INTERNAL_SERVER_ERROR",
-        details=[{"reason": str(exc)}],
+        details=[{"reason": err_msg}],
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
     )
