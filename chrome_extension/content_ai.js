@@ -894,60 +894,153 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  // 9. Gửi Prompt ĐÚNG 1 LẦN DUY NHẤT (Chống gửi đúp, chống spam nhiều tin nhắn cùng lúc)
-  async function sendSinglePrompt(inputBox, promptText, customSendSelector = "", customInputSelector = "") {
+  // 8b. Bấm nút như người thật (Dispatch đầy đủ chuỗi sự kiện Pointer/Mouse để vượt qua kiểm tra Synthetic Event)
+  function humanClick(el) {
+    if (!el) return;
+    try {
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
+
+      el.dispatchEvent(new PointerEvent("pointerdown", opts));
+      el.dispatchEvent(new MouseEvent("mousedown", opts));
+      el.dispatchEvent(new PointerEvent("pointerup", opts));
+      el.dispatchEvent(new MouseEvent("mouseup", opts));
+      el.dispatchEvent(new MouseEvent("click", opts));
+      if (typeof el.click === "function") el.click();
+    } catch (e) {
+      try { el.click(); } catch (err) { }
+    }
+  }
+
+  // 8c. Kiểm tra xem tin nhắn vừa gửi có bị lỗi "Không xác nhận là đã gửi" hoặc lỗi tương tự không
+  function findMessageSendError() {
+    try {
+      const candidateElements = document.querySelectorAll("p, span, div, small, button, a");
+      for (const el of candidateElements) {
+        if (!isLeftSideChatElement(el)) continue;
+        if (el.closest && el.closest("#tune-text-hud")) continue;
+        const txt = (el.innerText || el.textContent || "").trim().toLowerCase();
+        if (
+          txt.includes("không xác nhận là đã gửi") ||
+          txt.includes("không xác nhận") ||
+          txt.includes("không thể gửi") ||
+          txt.includes("failed to send") ||
+          txt.includes("chưa gửi được") ||
+          txt.includes("not delivered") ||
+          txt.includes("lỗi gửi")
+        ) {
+          if (isElementVisible(el)) {
+            return el;
+          }
+        }
+      }
+    } catch (e) { }
+    return null;
+  }
+
+  // 9. Gửi Prompt với cơ chế Human-like và Tự Động Thử Lại khi bị lỗi "Không xác nhận là đã gửi"
+  async function sendSinglePrompt(inputBox, promptText, customSendSelector = "", customInputSelector = "", maxRetries = 3) {
     if (stopRequested || !inputBox) return false;
 
-    // 1. Chờ AI rảnh hoàn toàn trước khi bắt đầu gõ
-    await waitForAIReady(customInputSelector);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (stopRequested) return false;
 
-    // 2. Làm sạch ô chat trước khi đưa văn bản mới vào
-    clearInputBox(inputBox);
-    await new Promise(r => setTimeout(r, 200));
+      // 1. Chờ AI rảnh hoàn toàn trước khi bắt đầu gõ
+      await waitForAIReady(customInputSelector);
 
-    // 3. Gõ nội dung văn bản
-    await typeTextIntoInput(inputBox, promptText);
-    await new Promise(r => setTimeout(r, 600));
+      // 2. Làm sạch ô chat trước khi đưa văn bản mới vào
+      clearInputBox(inputBox);
+      await new Promise(r => setTimeout(r, 250));
 
-    // 4. Bấm nút Gửi ĐÚNG 1 LẦN DUY NHẤT (Chờ nút gửi hết disabled)
-    let sendBtn = null;
-    for (let i = 0; i < 15; i++) {
-      sendBtn = findSendButton(customSendSelector);
-      if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true") {
-        break;
+      // 3. Gõ nội dung văn bản (với độ trễ tự nhiên)
+      await typeTextIntoInput(inputBox, promptText);
+      // Chờ 800ms để React/Lexical framework đồng bộ state vào form
+      await new Promise(r => setTimeout(r, 800));
+
+      // 4. Tìm nút Gửi (Chờ nút gửi sẵn sàng)
+      let sendBtn = null;
+      for (let i = 0; i < 20; i++) {
+        sendBtn = findSendButton(customSendSelector);
+        if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true") {
+          break;
+        }
+        await new Promise(r => setTimeout(r, 100));
       }
-      await new Promise(r => setTimeout(r, 100));
-    }
 
-    function triggerEnter(el) {
-      ["keydown", "keypress", "keyup"].forEach(type => {
+      function triggerEnter(el) {
+        ["keydown", "keypress", "keyup"].forEach(type => {
+          try {
+            el.dispatchEvent(new KeyboardEvent(type, {
+              key: "Enter",
+              code: "Enter",
+              keyCode: 13,
+              which: 13,
+              bubbles: true,
+              cancelable: true
+            }));
+          } catch (e) { }
+        });
+        if (el.form) {
+          try { el.form.requestSubmit(); } catch (e) { }
+        }
+      }
+
+      if (sendBtn) {
         try {
-          el.dispatchEvent(new KeyboardEvent(type, {
-            key: "Enter",
-            code: "Enter",
-            keyCode: 13,
-            which: 13,
-            bubbles: true,
-            cancelable: true
-          }));
-        } catch (e) { }
-      });
-      if (el.form) {
-        try { el.form.requestSubmit(); } catch (e) { }
-      }
-    }
-
-    if (sendBtn) {
-      try {
-        sendBtn.removeAttribute("disabled");
-        sendBtn.disabled = false;
-        sendBtn.click();
-      } catch (e) {
+          sendBtn.removeAttribute("disabled");
+          sendBtn.disabled = false;
+          humanClick(sendBtn);
+        } catch (e) {
+          triggerEnter(inputBox);
+        }
+      } else {
         triggerEnter(inputBox);
       }
-    } else {
-      triggerEnter(inputBox);
+
+      // 5. Kiểm tra kết quả sau khi gửi (chờ 2.5 giây để kiểm tra xem tin nhắn có đi thành công không)
+      await new Promise(r => setTimeout(r, 2500));
+
+      // Kiểm tra xem có bị lỗi "Không xác nhận là đã gửi" không
+      const errorEl = findMessageSendError();
+      if (errorEl) {
+        console.warn(`[Tune-Text] ⚠️ Phát hiện lỗi "${errorEl.innerText}" ở lần thử ${attempt}/${maxRetries}!`);
+        updateHUD(`⚠️ Lỗi "${(errorEl.innerText || "").trim()}". Đang thử gửi lại (${attempt}/${maxRetries})...`, null, null, "", false);
+
+        // Thử tìm nút Thử lại / Gửi lại gần thông báo lỗi
+        const retryBtn = errorEl.closest("button, a, div[role='button']") ||
+                         errorEl.parentElement?.querySelector("button, a, svg, [role='button']");
+        if (retryBtn && isElementVisible(retryBtn)) {
+          console.log("[Tune-Text] Click nút 'Thử lại' / 'Gửi lại' trực tiếp:", retryBtn);
+          humanClick(retryBtn);
+          await new Promise(r => setTimeout(r, 3000));
+          if (!findMessageSendError()) {
+            console.log("[Tune-Text] ✅ Đã gửi lại thành công sau khi click nút Thử lại!");
+            return true;
+          }
+        }
+
+        // Nếu vẫn còn lỗi, tìm lại ô chat và gửi lại từ đầu
+        if (attempt < maxRetries) {
+          let reInputBox = findAIInputBox(customInputSelector) || inputBox;
+          inputBox = reInputBox;
+          await new Promise(r => setTimeout(r, 1500));
+          continue; // Lặp lại lần tiếp theo
+        }
+      }
+
+      // Kiểm tra xem ô chat đã được xóa chưa (nếu ô chat vẫn còn nguyên text, tức là chưa gửi được)
+      const currentVal = (inputBox.value || inputBox.innerText || inputBox.textContent || "").trim();
+      if (currentVal.length > 20 && currentVal.includes(promptText.slice(0, 15))) {
+        console.warn(`[Tune-Text] ⚠️ Ô chat vẫn còn nguyên văn bản sau khi gửi, thử kích hoạt Enter lần nữa...`);
+        triggerEnter(inputBox);
+        await new Promise(r => setTimeout(r, 1500));
+      }
+
+      return true;
     }
+
     return true;
   }
 
@@ -980,6 +1073,36 @@
       // 2. Kiểm tra xem có spinner thực tế nào đang quay không
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
       const isGenerating = isAIGenerating(customStopSelector);
+
+      // Tự động thử lại nếu phát hiện lỗi "Không xác nhận là đã gửi" trong khi chưa có video
+      if (currentNewVideoCount === 0) {
+        const sendErr = findMessageSendError();
+        if (sendErr) {
+          console.warn("[Tune-Text] ⚠️ Phát hiện lỗi gửi tin nhắn khi đang chờ video:", sendErr.innerText);
+          const retryBtn = sendErr.closest("button, a, div[role='button']") ||
+                           sendErr.parentElement?.querySelector("button, a, [role='button']");
+          if (retryBtn && isElementVisible(retryBtn)) {
+            console.log("[Tune-Text] Tự động click nút thử lại:", retryBtn);
+            humanClick(retryBtn);
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+      }
+
+      // Tự động thử lại nếu phát hiện lỗi "Không xác nhận là đã gửi" trong khi chưa có ảnh
+      if (finalCount === 0) {
+        const sendErr = findMessageSendError();
+        if (sendErr) {
+          console.warn("[Tune-Text] ⚠️ Phát hiện lỗi gửi tin nhắn khi đang chờ ảnh:", sendErr.innerText);
+          const retryBtn = sendErr.closest("button, a, div[role='button']") ||
+                           sendErr.parentElement?.querySelector("button, a, [role='button']");
+          if (retryBtn && isElementVisible(retryBtn)) {
+            console.log("[Tune-Text] Tự động click nút thử lại:", retryBtn);
+            humanClick(retryBtn);
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+      }
 
       // Cập nhật tiến độ trực quan lên thanh HUD
       updateHUD(
@@ -1062,6 +1185,21 @@
 
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
       const isGenerating = isAIGenerating(customStopSelector);
+
+      // Tự động thử lại nếu phát hiện lỗi "Không xác nhận là đã gửi" trong khi chưa có video
+      if (currentNewVideoCount === 0) {
+        const sendErr = findMessageSendError();
+        if (sendErr) {
+          console.warn("[Tune-Text] ⚠️ Phát hiện lỗi gửi tin nhắn khi đang chờ video:", sendErr.innerText);
+          const retryBtn = sendErr.closest("button, a, div[role='button']") ||
+                           sendErr.parentElement?.querySelector("button, a, [role='button']");
+          if (retryBtn && isElementVisible(retryBtn)) {
+            console.log("[Tune-Text] Tự động click nút thử lại:", retryBtn);
+            humanClick(retryBtn);
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+      }
 
       // Cập nhật tiến độ trực tiếp lên HUD: ví dụ "Đang chờ tạo đủ 4 video (Cột chat)... (Đã có 4/4)"
       const elapsedSec = Math.floor((Date.now() - start) / 1000);
@@ -1597,9 +1735,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.3
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.4
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.3.3" });
+      sendResponse({ pong: true, version: "1.3.4" });
       return;
     }
 
@@ -1622,7 +1760,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.3) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.4) =====");
       console.log("  request.targetUrl          =", request.targetUrl);
       console.log("  request.platformCode       =", request.platformCode);
       console.log("  request.loopCount          =", request.loopCount, typeof request.loopCount);
