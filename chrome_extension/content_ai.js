@@ -345,40 +345,107 @@
     return rect.right <= splitX;
   }
 
-  // 4c3. Kiểm tra phần tử có phải là avatar hoặc mascot con thú của ứng dụng hay không (TUYỆT ĐỐI BỎ QUA KHÔNG TẢI)
+  // 4c3. Hàm kiểm tra URL có phải là của Mascot / Avatar của ứng dụng hay không
+  function isMascotUrl(url) {
+    if (!url || typeof url !== "string") return false;
+    const u = url.toLowerCase();
+    return (
+      u.includes("avatar") ||
+      u.includes("mascot") ||
+      u.includes("character") ||
+      u.includes("bot") ||
+      u.includes("muse-asset") ||
+      u.includes("creature") ||
+      u.includes("doll") ||
+      u.includes("logo") ||
+      u.includes("face") ||
+      u.includes("profile") ||
+      u.includes("assistant") ||
+      u.includes("agent") ||
+      u.includes("icon")
+    );
+  }
+
+  // 4c4. Kiểm tra phần tử có phải là avatar hoặc mascot con thú của ứng dụng hay không (TUYỆT ĐỐI BỎ QUA KHÔNG TẢI VÀ KHÔNG ĐẾM)
   function isAppMascotOrAvatar(el) {
     if (!el) return false;
     try {
-      // 1. Kiểm tra kích thước nhỏ (Avatar con thú chỉ khoảng 30px - 90px, còn video/ảnh do AI tạo luôn rộng > 140px)
+      // 1. Kiểm tra URL src của chính phần tử hoặc thẻ video/img con
+      const src = (el.currentSrc || el.src || el.getAttribute("src") || el.getAttribute("data-src") || el.href || "").toLowerCase();
+      if (src && isMascotUrl(src)) return true;
+
+      const innerVideo = (el.tagName === "VIDEO") ? el : (el.querySelector ? el.querySelector("video") : null);
+      if (innerVideo) {
+        const vSrc = (innerVideo.currentSrc || innerVideo.src || innerVideo.querySelector("source")?.src || "").toLowerCase();
+        if (vSrc && isMascotUrl(vSrc)) return true;
+      }
+
+      // 2. Nằm trong container avatar / mascot / profile / header / assistant / bot / agent
+      if (el.closest) {
+        const c = el.closest("[class*='avatar' i], [class*='mascot' i], [class*='profile' i], [class*='assistant' i], [class*='header' i], [class*='bot' i], [data-testid*='avatar' i], header, nav");
+        if (c) return true;
+      }
+
+      // 3. Kiểm tra nhãn Muse hoặc trạng thái con thú xung quanh (Muse, Creating videos, Searching memory, Đã kết nối...)
+      let current = el;
+      let depth = 0;
+      while (current && depth < 8) {
+        const txt = (current.innerText || current.textContent || "").trim().toLowerCase();
+        if (
+          txt.includes("creating videos") ||
+          txt.includes("searching memory") ||
+          txt.includes("đã kết nối") ||
+          txt.includes("agentic feature") ||
+          txt.includes("heartbeat") ||
+          txt.includes("muse\n") ||
+          txt === "muse"
+        ) {
+          // Nếu không phải là một card có tiêu đề "Video 1", "Video 2"... thì chắc chắn là cụm Mascot Muse
+          if (!/video\s*\d+/i.test(txt)) {
+            return true;
+          }
+        }
+
+        const label = (current.getAttribute("aria-label") || current.getAttribute("alt") || current.getAttribute("title") || "").toLowerCase();
+        if (label.includes("muse") || label.includes("avatar") || label.includes("mascot") || label.includes("assistant")) {
+          return true;
+        }
+
+        current = current.parentElement;
+        depth++;
+      }
+
+      // 4. Kiểm tra hình dáng và kích thước:
+      // Video AI tạo trên Muse LUÔN là video chữ nhật ngang 16:9 (ratio width/height >= 1.35)
+      // Con thú Mascot của Muse có hình tròn hoặc gần vuông (ratio ~ 0.65 đến 1.35, kích thước < 260px)
       const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0 && (rect.width < 130 || rect.height < 90)) {
-        return true;
+      if (rect.width > 0 && rect.height > 0) {
+        const ratio = rect.width / rect.height;
+        // Nếu gần vuông/tròn và kích thước không phải khung video lớn
+        if (ratio >= 0.65 && ratio <= 1.35 && rect.width < 260) {
+          return true;
+        }
+        // Nếu kích thước quá nhỏ (chiều rộng < 160px hoặc chiều cao < 100px)
+        if (rect.width < 160 || rect.height < 100) {
+          return true;
+        }
       }
 
-      // 2. Nằm trong container avatar / mascot / header / assistant / bot
-      if (el.closest && el.closest("[class*='avatar' i], [class*='mascot' i], [class*='profile' i], [class*='header' i], [class*='assistant' i], [data-testid*='avatar' i]")) {
-        return true;
-      }
-
-      // 3. Có chữ Muse hoặc avatar xung quanh
-      const label = (el.getAttribute("alt") || el.getAttribute("title") || el.getAttribute("aria-label") || "").toLowerCase();
-      if (label.includes("muse") || label.includes("avatar") || label.includes("bot")) {
-        return true;
-      }
-      if (el.parentElement && (el.parentElement.innerText || "").trim().toLowerCase() === "muse") {
-        return true;
-      }
-
-      // 4. URL có chứa từ khóa avatar / mascot / character
-      const src = (el.currentSrc || el.src || el.href || "").toLowerCase();
-      if (src.includes("avatar") || src.includes("mascot") || src.includes("character") || src.includes("logo") || src.includes("bot")) {
-        return true;
-      }
+      // 5. Kiểm tra style bo tròn tròn của avatar (border-radius: 50% hoặc tròn)
+      try {
+        const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+        if (style) {
+          const br = style.borderRadius;
+          if (br && (br.includes("%") || parseInt(br, 10) >= 30) && rect.width < 220) {
+            return true;
+          }
+        }
+      } catch (e) { }
     } catch (e) { }
     return false;
   }
 
-  // 4c4. Lấy danh sách ảnh hiển thị trên CỘT CHAT BÊN TRÁI (Loại bỏ 100% avatar con thú Muse)
+  // 4c5. Lấy danh sách ảnh hiển thị trên CỘT CHAT BÊN TRÁI (Loại bỏ 100% avatar con thú Muse)
   function getChatImageUrls() {
     const urls = new Set();
     try {
@@ -386,7 +453,7 @@
         if (!isLeftSideChatElement(img)) return; // Chỉ lấy trong cột chat bên trái
         if (isAppMascotOrAvatar(img)) return; // BỎ QUA CON THÚ AVATAR!
         const src = img.currentSrc || img.src || img.getAttribute("src");
-        if (src && !src.startsWith("data:") && isElementVisible(img)) {
+        if (src && !src.startsWith("data:") && isElementVisible(img) && !isMascotUrl(src)) {
           urls.add(src.trim());
         }
       });
@@ -394,7 +461,7 @@
     return urls;
   }
 
-  // 4c5. Lấy danh sách thẻ ảnh trên CỘT CHAT BÊN TRÁI (Sắp xếp từ trên xuống dưới)
+  // 4c6. Lấy danh sách thẻ ảnh trên CỘT CHAT BÊN TRÁI (Sắp xếp từ trên xuống dưới)
   function getChatImageCards() {
     const cards = [];
     try {
@@ -402,10 +469,12 @@
         if (!isLeftSideChatElement(img)) return;
         if (isAppMascotOrAvatar(img)) return; // BỎ QUA CON THÚ!
         if (isElementVisible(img)) {
+          const src = img.currentSrc || img.src || img.getAttribute("src") || "";
+          if (src && isMascotUrl(src)) return;
           if (img.complete && (img.naturalWidth > 60 || img.naturalHeight > 60)) {
             cards.push({
               img: img,
-              src: img.currentSrc || img.src || img.getAttribute("src") || "",
+              src: src,
               rect: img.getBoundingClientRect()
             });
           }
@@ -499,14 +568,15 @@
     return urls;
   }
 
-  // 4f2. Lấy danh sách video URLs trên CỘT CHAT BÊN TRÁI
+  // 4f2. Lấy danh sách video URLs trên CỘT CHAT BÊN TRÁI (Loại trừ tuyệt đối con thú Mascot Muse)
   function getChatVideoUrls() {
     const urls = new Set();
     try {
       document.querySelectorAll("video, source, a[href*='.mp4'], a[href*='.webm']").forEach(el => {
         if (!isLeftSideChatElement(el)) return;
+        if (isAppMascotOrAvatar(el)) return; // BỎ QUA CON THÚ MASCOT!
         const src = el.currentSrc || el.src || el.href || el.getAttribute("src") || el.getAttribute("data-src") || el.getAttribute("data-video-url");
-        if (src && isVideoUrl(src) && !src.startsWith("data:")) {
+        if (src && isVideoUrl(src) && !src.startsWith("data:") && !isMascotUrl(src)) {
           urls.add(src.trim());
         }
       });
@@ -514,7 +584,7 @@
     return urls;
   }
 
-  // 4f3. Lấy danh sách thẻ card video trên CỘT CHAT BÊN TRÁI (Sắp xếp theo thứ tự xuất hiện từ trên xuống dưới)
+  // 4f3. Lấy danh sách thẻ card video trên CỘT CHAT BÊN TRÁI (Sắp xếp theo thứ tự xuất hiện từ trên xuống dưới, loại trừ Mascot Muse)
   function getChatVideoCards() {
     const cards = [];
     const countedEls = new Set();
@@ -523,15 +593,25 @@
       // 1. Quét các thẻ video thực tế trong chat
       document.querySelectorAll("video").forEach(v => {
         if (!isLeftSideChatElement(v)) return;
+        if (isAppMascotOrAvatar(v)) return; // TUYỆT ĐỐI BỎ QUA CON THÚ MASCOT!
+
         const container = v.closest("[class*='message' i], [class*='card' i], div[role='article'], div") || v;
+        if (isAppMascotOrAvatar(container)) return; // TUYỆT ĐỐI BỎ QUA CON THÚ MASCOT!
+
+        const rect = container.getBoundingClientRect();
+        // Video do AI tạo trên Muse luôn là khung chữ nhật ngang (rộng >= 160px, cao >= 90px)
+        if (rect.width < 160 || rect.height < 90) return;
+
         if (!countedEls.has(container)) {
           countedEls.add(container);
           const s = v.currentSrc || v.src || v.querySelector("source")?.src || "";
+          if (s && isMascotUrl(s)) return; // BỎ QUA URL CON THÚ!
+
           cards.push({
             element: container,
             videoEl: v,
             src: (s && isVideoUrl(s)) ? s.trim() : "",
-            rect: container.getBoundingClientRect()
+            rect: rect
           });
         }
       });
@@ -539,9 +619,11 @@
       // 2. Quét các thẻ card video có icon Play ▶ hoặc text "Video \d+" trong chat
       document.querySelectorAll("[class*='video' i], [class*='message' i], [class*='card' i], div").forEach(el => {
         if (!isLeftSideChatElement(el)) return;
+        if (isAppMascotOrAvatar(el)) return; // TUYỆT ĐỐI BỎ QUA CON THÚ MASCOT!
+
         const rect = el.getBoundingClientRect();
-        // Kích thước card video điển hình
-        if (rect.width < 100 || rect.height < 60 || rect.width > window.innerWidth * 0.45) return;
+        // Kích thước card video AI thực tế luôn là hộp rộng chữ nhật ngang (rộng >= 160px, cao >= 90px)
+        if (rect.width < 160 || rect.height < 90 || rect.width > window.innerWidth * 0.45) return;
 
         const hasPlay = (
           el.querySelector && el.querySelector("svg polygon, svg path[d*='M'], [class*='play'], [aria-label*='play' i]")
@@ -559,8 +641,12 @@
           if (!alreadyCounted) {
             countedEls.add(el);
             const v = el.querySelector("video");
+            if (v && isAppMascotOrAvatar(v)) return;
+
             const a = el.querySelector("a[href*='.mp4'], a[href*='.webm']");
             const s = v ? (v.currentSrc || v.src) : (a ? a.href : (el.getAttribute("data-video-url") || ""));
+            if (s && isMascotUrl(s)) return;
+
             cards.push({
               element: el,
               videoEl: v,
@@ -946,13 +1032,6 @@
       return true;
     }
     return false;
-  }
-
-  // Kiểm tra URL có phải là của Mascot con thú avatar của ứng dụng không
-  function isMascotUrl(url) {
-    if (!url || typeof url !== "string") return false;
-    const u = url.toLowerCase();
-    return u.includes("avatar") || u.includes("mascot") || u.includes("character") || u.includes("bot");
   }
 
   // 10b. Chờ AI tạo đủ số lượng VIDEO của đợt này TRÊN CỘT CHAT BÊN TRÁI
@@ -1518,9 +1597,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.2
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.3
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.3.2" });
+      sendResponse({ pong: true, version: "1.3.3" });
       return;
     }
 
@@ -1543,7 +1622,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.2) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.3) =====");
       console.log("  request.targetUrl          =", request.targetUrl);
       console.log("  request.platformCode       =", request.platformCode);
       console.log("  request.loopCount          =", request.loopCount, typeof request.loopCount);
