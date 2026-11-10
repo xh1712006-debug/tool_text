@@ -471,11 +471,14 @@
         if (isElementVisible(img)) {
           const src = img.currentSrc || img.src || img.getAttribute("src") || "";
           if (src && isMascotUrl(src)) return;
-          if (img.complete && (img.naturalWidth > 60 || img.naturalHeight > 60)) {
+          const rect = img.getBoundingClientRect();
+          const w = img.naturalWidth || img.width || rect.width;
+          const h = img.naturalHeight || img.height || rect.height;
+          if (w > 50 && h > 40) {
             cards.push({
               img: img,
               src: src,
-              rect: img.getBoundingClientRect()
+              rect: rect
             });
           }
         }
@@ -1073,21 +1076,6 @@
       // 2. Kiểm tra xem có spinner thực tế nào đang quay không
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
       const isGenerating = isAIGenerating(customStopSelector);
-
-      // Tự động thử lại nếu phát hiện lỗi "Không xác nhận là đã gửi" trong khi chưa có video
-      if (currentNewVideoCount === 0) {
-        const sendErr = findMessageSendError();
-        if (sendErr) {
-          console.warn("[Tune-Text] ⚠️ Phát hiện lỗi gửi tin nhắn khi đang chờ video:", sendErr.innerText);
-          const retryBtn = sendErr.closest("button, a, div[role='button']") ||
-                           sendErr.parentElement?.querySelector("button, a, [role='button']");
-          if (retryBtn && isElementVisible(retryBtn)) {
-            console.log("[Tune-Text] Tự động click nút thử lại:", retryBtn);
-            humanClick(retryBtn);
-            await new Promise(r => setTimeout(r, 2000));
-          }
-        }
-      }
 
       // Tự động thử lại nếu phát hiện lỗi "Không xác nhận là đã gửi" trong khi chưa có ảnh
       if (finalCount === 0) {
@@ -1735,9 +1723,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.4
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.5
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.3.4" });
+      sendResponse({ pong: true, version: "1.3.5" });
       return;
     }
 
@@ -1760,7 +1748,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.4) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.5) =====");
       console.log("  request.targetUrl          =", request.targetUrl);
       console.log("  request.platformCode       =", request.platformCode);
       console.log("  request.loopCount          =", request.loopCount, typeof request.loopCount);

@@ -18,7 +18,7 @@
   // Đánh dấu để trang Web biết Extension đã sẵn sàng
   function notifyWebPage() {
     document.documentElement.dataset.tuneTextExtension = "active";
-    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.3.4" } }));
+    window.dispatchEvent(new CustomEvent("TUNE_TEXT_EXTENSION_ACTIVE", { detail: { version: "1.3.5" } }));
   }
 
   notifyWebPage();
