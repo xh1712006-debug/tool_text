@@ -196,6 +196,19 @@
       "input[type='text']:not([disabled])"
     ];
 
+    // Ưu tiên 1: Tìm ô nhập nằm trong CỘT CHAT BÊN TRÁI
+    for (const s of selectors) {
+      try {
+        const elements = document.querySelectorAll(s);
+        for (const el of elements) {
+          if (!el.disabled && el.offsetParent !== null && isLeftSideChatElement(el)) {
+            return el;
+          }
+        }
+      } catch (e) { }
+    }
+
+    // Ưu tiên 2: Tìm trên toàn trang nếu chưa thấy
     for (const s of selectors) {
       try {
         const elements = document.querySelectorAll(s);
@@ -232,6 +245,19 @@
       "button[type='submit']"
     ];
 
+    // Ưu tiên 1: Tìm nút Gửi nằm trong CỘT CHAT BÊN TRÁI
+    for (const s of selectors) {
+      try {
+        const elements = document.querySelectorAll(s);
+        for (const btn of elements) {
+          if (btn && btn.offsetParent !== null && isLeftSideChatElement(btn)) {
+            return btn;
+          }
+        }
+      } catch (e) { }
+    }
+
+    // Ưu tiên 2: Tìm nút Gửi trên toàn trang
     for (const s of selectors) {
       try {
         const elements = document.querySelectorAll(s);
@@ -762,6 +788,9 @@
         // Bỏ qua nếu dòng chữ này nằm trong chính thanh HUD của Tune-Text
         if (!parent || (parent.closest && parent.closest("#tune-text-hud"))) continue;
 
+        // Bỏ qua nếu thuộc Mascot con thú Avatar (con thú luôn có Creating videos, Searching memory...)
+        if (isAppMascotOrAvatar(parent)) continue;
+
         const txt = (node.nodeValue || "").trim();
         if (!txt || txt.length > 80) continue;
         if (statusRegex.test(txt)) {
@@ -775,29 +804,34 @@
     return false;
   }
 
-  // 6. Làm sạch ô nhập để tránh dính chữ của lượt trước
+  // 6. Làm sạch ô nhập để tránh dính chữ của lượt trước (Tuyệt đối không đè innerHTML để giữ nguyên Lexical state)
   function clearInputBox(el) {
     if (!el) return;
     try {
+      el.focus();
       if (el.tagName.toLowerCase() === "textarea" || el.tagName.toLowerCase() === "input") {
         el.value = "";
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
-      } else {
-        try {
-          const sel = window.getSelection();
-          const range = document.createRange();
-          range.selectNodeContents(el);
-          sel.removeAllRanges();
-          sel.addRange(range);
-          document.execCommand("delete", false, null);
-        } catch (err) { }
-        if (el.textContent.trim() !== "") {
-          el.innerHTML = "<p><br></p>";
-        }
-        el.dispatchEvent(new InputEvent("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
+        return;
       }
+
+      // Với Lexical / ContentEditable:
+      const sel = window.getSelection();
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+
+      try {
+        document.execCommand("delete", false, null);
+      } catch (err) { }
+
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
     } catch (e) { }
   }
 
@@ -834,7 +868,10 @@
   // 8. Gõ văn bản vào ô nhập (Hỗ trợ 100% React, Meta Lexical Muse.ai, ProseMirror ChatGPT, Claude, Gemini...)
   async function typeTextIntoInput(el, text) {
     if (!el || !text) return;
-    try { el.focus(); } catch (e) { }
+    try {
+      el.click();
+      el.focus();
+    } catch (e) { }
 
     const isTextarea = el.tagName.toLowerCase() === "textarea" || el.tagName.toLowerCase() === "input";
 
@@ -857,40 +894,42 @@
 
     // Với ContentEditable (Lexical Muse.ai, ProseMirror ChatGPT, Claude, Gemini...):
     try {
-      el.focus();
       const sel = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      sel.removeAllRanges();
-      sel.addRange(range);
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
     } catch (e) { }
 
-    // Thử dùng insertText (Chuẩn cho Lexical của Meta/Muse và ProseMirror)
-    let insertSuccess = false;
+    // 1. Thử dùng ClipboardEvent paste (Phương pháp chuẩn tương thích cao nhất với Meta Lexical)
+    let pasteWorked = false;
     try {
-      insertSuccess = document.execCommand("insertText", false, text);
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      const pasteEvt = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dt
+      });
+      pasteWorked = el.dispatchEvent(pasteEvt);
     } catch (e) { }
 
-    // Nếu chưa nhận đủ, dùng ClipboardEvent paste
+    // 2. Thử dùng insertText
     const currentLen = (el.textContent || el.innerText || "").trim().length;
-    if (!insertSuccess || currentLen < Math.min(text.trim().length * 0.7, 40)) {
+    if (!pasteWorked || currentLen < Math.min(text.trim().length * 0.5, 30)) {
       try {
-        const dt = new DataTransfer();
-        dt.setData("text/plain", text);
-        const pasteEvt = new ClipboardEvent("paste", {
-          bubbles: true,
-          cancelable: true,
-          clipboardData: dt
-        });
-        el.dispatchEvent(pasteEvt);
+        document.execCommand("insertText", false, text);
       } catch (e) { }
     }
 
-    if ((el.textContent || el.innerText || "").trim() === "") {
-      try {
-        el.innerText = text;
-      } catch (e) { }
-    }
+    // 3. Dispatch sự kiện input W3C chuẩn để Lexical cập nhật state
+    el.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: text }));
+    el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
 
     el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
     el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1704,9 +1743,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.6
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.7
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.3.6" });
+      sendResponse({ pong: true, version: "1.3.7" });
       return;
     }
 
@@ -1729,7 +1768,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.6) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.7) =====");
       console.log("  request.targetUrl          =", request.targetUrl);
       console.log("  request.platformCode       =", request.platformCode);
       console.log("  request.loopCount          =", request.loopCount, typeof request.loopCount);
