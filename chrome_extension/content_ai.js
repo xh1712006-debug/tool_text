@@ -943,119 +943,76 @@
     return null;
   }
 
-  // 9. Gửi Prompt với cơ chế Human-like và Tự Động Thử Lại khi bị lỗi "Không xác nhận là đã gửi"
-  async function sendSinglePrompt(inputBox, promptText, customSendSelector = "", customInputSelector = "", maxRetries = 3) {
+  // 9. Gửi Prompt ĐÚNG 1 LẦN DUY NHẤT (Tuyệt đối không gửi đúp, không dispatch lặp click)
+  async function sendSinglePrompt(inputBox, promptText, customSendSelector = "", customInputSelector = "") {
     if (stopRequested || !inputBox) return false;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      if (stopRequested) return false;
+    // 1. Chờ AI rảnh hoàn toàn trước khi bắt đầu gõ
+    await waitForAIReady(customInputSelector);
 
-      // 1. Chờ AI rảnh hoàn toàn trước khi bắt đầu gõ
-      await waitForAIReady(customInputSelector);
+    // 2. Làm sạch ô chat trước khi đưa văn bản mới vào
+    clearInputBox(inputBox);
+    await new Promise(r => setTimeout(r, 250));
 
-      // 2. Làm sạch ô chat trước khi đưa văn bản mới vào
-      clearInputBox(inputBox);
-      await new Promise(r => setTimeout(r, 250));
+    // 3. Gõ nội dung văn bản
+    await typeTextIntoInput(inputBox, promptText);
+    await new Promise(r => setTimeout(r, 800));
 
-      // 3. Gõ nội dung văn bản (với độ trễ tự nhiên)
-      await typeTextIntoInput(inputBox, promptText);
-      // Chờ 800ms để React/Lexical framework đồng bộ state vào form
-      await new Promise(r => setTimeout(r, 800));
-
-      // 4. Tìm nút Gửi (Chờ nút gửi sẵn sàng)
-      let sendBtn = null;
-      for (let i = 0; i < 20; i++) {
-        sendBtn = findSendButton(customSendSelector);
-        if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true") {
-          break;
-        }
-        await new Promise(r => setTimeout(r, 100));
+    // 4. Bấm nút Gửi ĐÚNG 1 LẦN DUY NHẤT
+    let sendBtn = null;
+    for (let i = 0; i < 20; i++) {
+      sendBtn = findSendButton(customSendSelector);
+      if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true") {
+        break;
       }
-
-      function triggerEnter(el) {
-        ["keydown", "keypress", "keyup"].forEach(type => {
-          try {
-            el.dispatchEvent(new KeyboardEvent(type, {
-              key: "Enter",
-              code: "Enter",
-              keyCode: 13,
-              which: 13,
-              bubbles: true,
-              cancelable: true
-            }));
-          } catch (e) { }
-        });
-        if (el.form) {
-          try { el.form.requestSubmit(); } catch (e) { }
-        }
-      }
-
-      if (sendBtn) {
-        try {
-          sendBtn.removeAttribute("disabled");
-          sendBtn.disabled = false;
-          humanClick(sendBtn);
-        } catch (e) {
-          triggerEnter(inputBox);
-        }
-      } else {
-        triggerEnter(inputBox);
-      }
-
-      // 5. Kiểm tra kết quả sau khi gửi (chờ 2.5 giây để kiểm tra xem tin nhắn có đi thành công không)
-      await new Promise(r => setTimeout(r, 2500));
-
-      // Kiểm tra xem có bị lỗi "Không xác nhận là đã gửi" không
-      const errorEl = findMessageSendError();
-      if (errorEl) {
-        console.warn(`[Tune-Text] ⚠️ Phát hiện lỗi "${errorEl.innerText}" ở lần thử ${attempt}/${maxRetries}!`);
-        updateHUD(`⚠️ Lỗi "${(errorEl.innerText || "").trim()}". Đang thử gửi lại (${attempt}/${maxRetries})...`, null, null, "", false);
-
-        // Thử tìm nút Thử lại / Gửi lại gần thông báo lỗi
-        const retryBtn = errorEl.closest("button, a, div[role='button']") ||
-                         errorEl.parentElement?.querySelector("button, a, svg, [role='button']");
-        if (retryBtn && isElementVisible(retryBtn)) {
-          console.log("[Tune-Text] Click nút 'Thử lại' / 'Gửi lại' trực tiếp:", retryBtn);
-          humanClick(retryBtn);
-          await new Promise(r => setTimeout(r, 3000));
-          if (!findMessageSendError()) {
-            console.log("[Tune-Text] ✅ Đã gửi lại thành công sau khi click nút Thử lại!");
-            return true;
-          }
-        }
-
-        // Nếu vẫn còn lỗi, tìm lại ô chat và gửi lại từ đầu
-        if (attempt < maxRetries) {
-          let reInputBox = findAIInputBox(customInputSelector) || inputBox;
-          inputBox = reInputBox;
-          await new Promise(r => setTimeout(r, 1500));
-          continue; // Lặp lại lần tiếp theo
-        }
-      }
-
-      // Kiểm tra xem ô chat đã được xóa chưa (nếu ô chat vẫn còn nguyên text, tức là chưa gửi được)
-      const currentVal = (inputBox.value || inputBox.innerText || inputBox.textContent || "").trim();
-      if (currentVal.length > 20 && currentVal.includes(promptText.slice(0, 15))) {
-        console.warn(`[Tune-Text] ⚠️ Ô chat vẫn còn nguyên văn bản sau khi gửi, thử kích hoạt Enter lần nữa...`);
-        triggerEnter(inputBox);
-        await new Promise(r => setTimeout(r, 1500));
-      }
-
-      return true;
+      await new Promise(r => setTimeout(r, 100));
     }
 
+    function triggerEnter(el) {
+      ["keydown", "keypress", "keyup"].forEach(type => {
+        try {
+          el.dispatchEvent(new KeyboardEvent(type, {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true
+          }));
+        } catch (e) { }
+      });
+      if (el.form) {
+        try { el.form.requestSubmit(); } catch (e) { }
+      }
+    }
+
+    if (sendBtn) {
+      try {
+        sendBtn.removeAttribute("disabled");
+        sendBtn.disabled = false;
+        // BẤM NÚT GỬI ĐÚNG 1 LẦN DUY NHẤT:
+        sendBtn.click();
+      } catch (e) {
+        triggerEnter(inputBox);
+      }
+    } else {
+      triggerEnter(inputBox);
+    }
+
+    await new Promise(r => setTimeout(r, 1500));
     return true;
   }
 
   // 10a. Chờ AI tạo đủ số lượng HÌNH ẢNH của đợt này TRÊN CỘT CHAT BÊN TRÁI
-  async function waitForImageGeneration(initialImages, initialImageCount = 0, expectedCount = 1, maxWaitMs = 360000, customStopSelector = "") {
+  async function waitForImageGeneration(initialImages, initialImageCount = 0, expectedCount = 1, maxWaitMs = 360000, customStopSelector = "", retryPrompt = "", customSendSel = "", customInputSel = "") {
     const start = Date.now();
     let stableCount = 0;
+    let retryAttempted = false;
 
-    // Chờ tối thiểu 3 giây đầu để AI tiếp nhận prompt qua mạng
-    await new Promise(r => setTimeout(r, 3000));
+    // Chờ tối thiểu 4 giây đầu để AI tiếp nhận prompt qua mạng
+    await new Promise(r => setTimeout(r, 4000));
 
-    // Bước B: Chờ cho tới khi cột chat bên trái xuất hiện đủ số lượng ảnh mới (loại trừ con thú avatar)
+    // Bước B: Chờ cho tới khi cột chat bên trái xuất hiện đủ số lượng thẻ ảnh mới (loại trừ con thú avatar)
     while (Date.now() - start < maxWaitMs) {
       if (stopRequested) return;
 
@@ -1063,31 +1020,42 @@
       const currentChatImages = getChatImageCards();
       const currentChatUrls = getChatImageUrls();
 
-      // Đếm theo URL mới
+      // Đếm số lượng thẻ ảnh THỰC TẾ mới xuất hiện thêm trong chat
+      const newCardsCount = Math.max(0, currentChatImages.length - initialImageCount);
+
+      // Đếm theo URL mới nếu có
       let newUrlsCount = 0;
       currentChatUrls.forEach(u => {
         if (!initialImages.has(u)) newUrlsCount++;
       });
 
-      // Đếm theo số lượng thẻ ảnh mới trong chat
-      const newCardsCount = Math.max(0, currentChatImages.length - initialImageCount);
-      const finalCount = Math.max(newUrlsCount, newCardsCount);
+      // CHỈ COI LÀ CÓ ẢNH MỚI KHI SỐ THẺ CARD ẢNH TRÊN MÀN HÌNH THỰC SỰ TĂNG LÊN (Chống nhầm với ảnh cũ)
+      const finalCount = newCardsCount > 0 ? Math.max(newUrlsCount, newCardsCount) : 0;
 
-      // 2. Kiểm tra xem có spinner thực tế nào đang quay không
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
       const isGenerating = isAIGenerating(customStopSelector);
 
-      // Tự động thử lại nếu phát hiện lỗi "Không xác nhận là đã gửi" trong khi chưa có ảnh
-      if (finalCount === 0) {
+      // 2. KIỂM TRA LỖI "KHÔNG XÁC NHẬN LÀ ĐÃ GỬI" (NẾU CHƯA CÓ ẢNH NÀO VÀ ĐÃ CHỜ HƠN 6 GIÂY)
+      if (finalCount === 0 && (Date.now() - start) > 6000 && !retryAttempted) {
         const sendErr = findMessageSendError();
         if (sendErr) {
-          console.warn("[Tune-Text] ⚠️ Phát hiện lỗi gửi tin nhắn khi đang chờ ảnh:", sendErr.innerText);
+          retryAttempted = true;
+          console.warn(`[Tune-Text] ⚠️ Phát hiện lỗi "${sendErr.innerText}". Đang tự động nhập lại prompt...`);
+          updateHUD(`⚠️ Tin nhắn bị lỗi "${(sendErr.innerText || '').trim()}". Đang tự động nhập lại prompt...`, null, null, "", false);
+
           const retryBtn = sendErr.closest("button, a, div[role='button']") ||
                            sendErr.parentElement?.querySelector("button, a, [role='button']");
           if (retryBtn && isElementVisible(retryBtn)) {
-            console.log("[Tune-Text] Tự động click nút thử lại:", retryBtn);
-            humanClick(retryBtn);
+            console.log("[Tune-Text] Click nút thử lại trực tiếp:", retryBtn);
+            retryBtn.click();
             await new Promise(r => setTimeout(r, 2000));
+          } else if (retryPrompt) {
+            console.log("[Tune-Text] Tự động gõ lại prompt bị lỗi vào ô chat...");
+            const reInputBox = findAIInputBox(customInputSel);
+            if (reInputBox) {
+              await sendSinglePrompt(reInputBox, retryPrompt, customSendSel, customInputSel);
+              await new Promise(r => setTimeout(r, 2000));
+            }
           }
         }
       }
@@ -1099,7 +1067,7 @@
       );
 
       // NẾU ĐÃ RA ĐỦ HOẶC VƯỢT SỐ LƯỢNG ẢNH CỦA ĐỢT NÀY TRONG CHAT (Ví dụ: 4/4 ảnh):
-      if (finalCount >= expectedCount) {
+      if (finalCount >= expectedCount && newCardsCount >= expectedCount) {
         if (!hasActiveSpinner && !isGenerating) {
           stableCount++;
           if (stableCount >= 2) {
@@ -1146,9 +1114,10 @@
   }
 
   // 10b. Chờ AI tạo đủ số lượng VIDEO của đợt này TRÊN CỘT CHAT BÊN TRÁI
-  async function waitForVideoGeneration(initialVideos, initialVideoCount = 0, expectedCount = 1, maxWaitMs = 600000, customStopSelector = "") {
+  async function waitForVideoGeneration(initialVideos, initialVideoCount = 0, expectedCount = 1, maxWaitMs = 600000, customStopSelector = "", retryCmd = "", customSendSel = "", customInputSel = "") {
     const start = Date.now();
     let stableCount = 0;
+    let retryAttempted = false;
 
     // Chờ tối thiểu 4 giây đầu để lệnh gửi đi và AI bắt đầu quá trình tạo video
     await new Promise(r => setTimeout(r, 4000));
@@ -1161,30 +1130,42 @@
       const currentChatVideos = getChatVideoCards();
       const currentChatUrls = getChatVideoUrls();
 
+      // Đếm số lượng thẻ card video THỰC TẾ mới xuất hiện trong chat
+      const newCardsCount = Math.max(0, currentChatVideos.length - initialVideoCount);
+
       // Đếm số URL video mới trong chat
       let newUrlsCount = 0;
       currentChatUrls.forEach(u => {
         if (!initialVideos.has(u)) newUrlsCount++;
       });
 
-      // Đếm số lượng card video mới xuất hiện trong chat
-      const newCardsCount = Math.max(0, currentChatVideos.length - initialVideoCount);
-      const currentNewVideoCount = Math.max(newUrlsCount, newCardsCount);
+      // CHỈ COI LÀ CÓ VIDEO MỚI KHI THỰC SỰ CÓ THẺ CARD VIDEO MỚI TRÊN MÀN HÌNH (Chống nhầm video cũ)
+      const currentNewVideoCount = newCardsCount > 0 ? Math.max(newUrlsCount, newCardsCount) : 0;
 
       const hasActiveSpinner = !!document.querySelector("svg.animate-spin, .animate-spin");
       const isGenerating = isAIGenerating(customStopSelector);
 
-      // Tự động thử lại nếu phát hiện lỗi "Không xác nhận là đã gửi" trong khi chưa có video
-      if (currentNewVideoCount === 0) {
+      // 2. KIỂM TRA LỖI "KHÔNG XÁC NHẬN LÀ ĐÃ GỬI" (NẾU CHƯA CÓ VIDEO NÀO VÀ ĐÃ CHỜ HƠN 7 GIÂY)
+      if (currentNewVideoCount === 0 && (Date.now() - start) > 7000 && !retryAttempted) {
         const sendErr = findMessageSendError();
         if (sendErr) {
-          console.warn("[Tune-Text] ⚠️ Phát hiện lỗi gửi tin nhắn khi đang chờ video:", sendErr.innerText);
+          retryAttempted = true;
+          console.warn(`[Tune-Text] ⚠️ Phát hiện lỗi "${sendErr.innerText}". Đang tự động gửi lại câu lệnh tạo video...`);
+          updateHUD(`⚠️ Câu lệnh video bị lỗi "${(sendErr.innerText || '').trim()}". Đang tự động nhập lại...`, null, null, "", false);
+
           const retryBtn = sendErr.closest("button, a, div[role='button']") ||
                            sendErr.parentElement?.querySelector("button, a, [role='button']");
           if (retryBtn && isElementVisible(retryBtn)) {
-            console.log("[Tune-Text] Tự động click nút thử lại:", retryBtn);
-            humanClick(retryBtn);
+            console.log("[Tune-Text] Click nút thử lại trực tiếp:", retryBtn);
+            retryBtn.click();
             await new Promise(r => setTimeout(r, 2000));
+          } else if (retryCmd) {
+            console.log("[Tune-Text] Tự động gõ lại câu lệnh video bị lỗi vào ô chat...");
+            const cmdInputBox = findAIInputBox(customInputSel);
+            if (cmdInputBox) {
+              await sendSinglePrompt(cmdInputBox, retryCmd, customSendSel, customInputSel);
+              await new Promise(r => setTimeout(r, 2000));
+            }
           }
         }
       }
@@ -1197,7 +1178,7 @@
       );
 
       // NẾU ĐÃ RA ĐỦ HOẶC VƯỢT SỐ LƯỢNG VIDEO CỦA ĐỢT NÀY TRONG CHAT (Ví dụ: 4/4 video):
-      if (currentNewVideoCount >= expectedCount) {
+      if (currentNewVideoCount >= expectedCount && newCardsCount >= expectedCount) {
         if (!hasActiveSpinner && !isGenerating) {
           stableCount++;
           if (stableCount >= 2) {
@@ -1534,7 +1515,7 @@
           log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI tạo xong hình ảnh cho ${batchProgressStr} (theo dõi cột chat bên trái)...`,
           is_completed: false
         });
-        await waitForImageGeneration(preImages, preImageCardCount, currentBatch.count, 360000, customStopSel);
+        await waitForImageGeneration(preImages, preImageCardCount, currentBatch.count, 360000, customStopSel, promptText, customSendSel, customInputSel);
         if (stopRequested) break;
 
         safeReportProgress(callerTabId, {
@@ -1605,7 +1586,7 @@
               log: `[Tab AI] ${loopPrefix} ⏳ Đang chờ AI tạo video cho ${batchProgressStr} (theo dõi cột chat bên trái)...`,
               is_completed: false
             });
-            await waitForVideoGeneration(preVideos, preChatVideoCount, currentBatch.count, 600000, customStopSel);
+            await waitForVideoGeneration(preVideos, preChatVideoCount, currentBatch.count, 600000, customStopSel, cmdToSend, customSendSel, customInputSel);
           }
         }
         if (stopRequested) break;
@@ -1723,9 +1704,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.5
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.6
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.3.5" });
+      sendResponse({ pong: true, version: "1.3.6" });
       return;
     }
 
@@ -1748,7 +1729,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.5) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.6) =====");
       console.log("  request.targetUrl          =", request.targetUrl);
       console.log("  request.platformCode       =", request.platformCode);
       console.log("  request.loopCount          =", request.loopCount, typeof request.loopCount);
