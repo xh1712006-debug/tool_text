@@ -931,11 +931,6 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-    el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
   // 8b. Bấm nút như người thật (Dispatch đầy đủ chuỗi sự kiện Pointer/Mouse để vượt qua kiểm tra Synthetic Event)
   function humanClick(el) {
     if (!el) return;
@@ -1743,9 +1738,9 @@
   }
 
   window.__tuneTextMsgListener = (request, sender, sendResponse) => {
-    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.7
+    // 1. Phản hồi PING để background biết content script đã nạp phiên bản 1.3.8
     if (request.action === "PING") {
-      sendResponse({ pong: true, version: "1.3.7" });
+      sendResponse({ pong: true, version: "1.3.8" });
       return;
     }
 
@@ -1768,7 +1763,7 @@
       sendResponse({ started: true });
 
       // ===== DEBUG: In ra tất cả giá trị nhận được để kiểm tra =====
-      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.7) =====");
+      console.log("===== [Tune-Text] DEBUG RUN_PROMPTS (v1.3.8) =====");
       console.log("  request.targetUrl          =", request.targetUrl);
       console.log("  request.platformCode       =", request.platformCode);
       console.log("  request.loopCount          =", request.loopCount, typeof request.loopCount);
